@@ -59,3 +59,14 @@ describe('actions', () => {
     expect(r.stdout).toMatch(/^(true|false)$/);
   });
 });
+
+describe('review fixes', () => {
+  it('safari_open_url only accepts http(s)', () => {
+    const a = actions.find((x) => x.name === 'safari_open_url')!;
+    const p = (url: string) => z.object(a.schema).safeParse({ url }).success;
+    expect(p('https://github.com')).toBe(true);
+    expect(p('http://localhost:3000')).toBe(true);
+    for (const u of ['shortcuts://run-shortcut?name=x', 'file:///etc/passwd', 'javascript:alert(1)', 'ssh://host'])
+      expect(p(u), u).toBe(false);
+  });
+});

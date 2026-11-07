@@ -110,7 +110,12 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
       const lang: Lang = language ?? 'applescript';
       if (saveAs !== undefined && !validName(saveAs)) return fail(`Invalid workflow name "${saveAs}": use lowercase letters, digits and _ (start with a letter, max 48 chars)`);
       const existing = saveAs ? await store.get(saveAs) : undefined;
-      const note = saveAs ? `If it succeeds it will be saved as workflow "${saveAs}"${existing ? ' (replacing the existing one)' : ''} and can then run WITHOUT asking.` : undefined;
+      const paramNote = params.length
+        ? ` Future runs may pass ANY value for: ${params.map((p, i) => `${p.name} (argv ${i + 1})`).join(', ')}.`
+        : '';
+      const note = saveAs
+        ? `If it succeeds it will be saved as workflow "${saveAs}"${existing ? ' (replacing the existing one)' : ''} and can then run WITHOUT asking.${paramNote}`
+        : undefined;
       const argNote = args.length ? `\nargv: ${JSON.stringify(args)}` : '';
       if (!(await ask({ title: 'Allow the agent to run this script?', script, lang, note: (note ?? '') + argNote || undefined })))
         return fail('Denied by user. The script was not run.');
@@ -154,7 +159,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
         note: 'Script changed on disk since approval. Approving re-saves its approval.',
       });
       if (!allowed) return fail('Denied by user: the workflow script changed since it was approved.');
-      await store.reapprove(name);
+      await store.reapprove(w);
     }
     const r = await exec(w.script, w.lang, args);
     return r.ok ? ok(r.out) : fail(r.out);

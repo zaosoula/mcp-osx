@@ -26,7 +26,7 @@ describe('WorkflowStore', () => {
     await writeFile(file, JSON.stringify(raw));
     const tampered = (await store.get('hello'))!;
     expect(store.isApproved(tampered)).toBe(false);
-    await store.reapprove('hello');
+    await store.reapprove(tampered);
     expect(store.isApproved((await store.get('hello'))!)).toBe(true);
   });
 
@@ -78,5 +78,27 @@ describe('argsFor', () => {
   });
   it('missing required param throws', () => {
     expect(() => argsFor({ ...wf, approvedHash: '', createdAt: '' }, {})).toThrow(/who/);
+  });
+});
+
+describe('review fixes', () => {
+  it('reapprove only approves the script the user saw', async () => {
+    await store.save(wf);
+    const file = join(dir, 'hello.json');
+    const raw = JSON.parse(await readFile(file, 'utf8'));
+    await writeFile(file, JSON.stringify({ ...raw, script: 'A' }));
+    const shown = (await store.get('hello'))!;
+    await writeFile(file, JSON.stringify({ ...raw, script: 'B' }));
+    await expect(store.reapprove(shown)).rejects.toThrow(/changed again/);
+    expect(store.isApproved((await store.get('hello'))!)).toBe(false);
+    await writeFile(file, JSON.stringify({ ...raw, script: 'A' }));
+    await store.reapprove(shown);
+    expect(store.isApproved((await store.get('hello'))!)).toBe(true);
+  });
+
+  it('watcher errors do not crash the process', async () => {
+    store.onChange(() => {});
+    expect(() => (store as any).watcher.emit('error', new Error('EPERM'))).not.toThrow();
+    store.close();
   });
 });

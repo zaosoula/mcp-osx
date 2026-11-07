@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { watch, mkdirSync, type FSWatcher } from 'node:fs';
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -92,9 +92,7 @@ export class WorkflowStore {
     for (const p of input.params) if (!PARAM_RE.test(p.name)) throw new Error(`Invalid parameter name "${p.name}"`);
     const w: Workflow = { ...input, approvedHash: hashScript(input.lang, input.script), createdAt: new Date().toISOString() };
     await mkdir(this.dir, { recursive: true });
-    const tmp = `${file}.${process.pid}.tmp`;
-    await writeFile(tmp, JSON.stringify(w, null, 2) + '\n');
-    await rename(tmp, file);
+    await this.writeAtomic(file, w);
     this.emit();
     return w;
   }
@@ -108,12 +106,21 @@ export class WorkflowStore {
     return w.approvedHash === hashScript(w.lang, w.script);
   }
 
-  /** Record that the user approved the script as it now exists on disk. */
-  async reapprove(name: string): Promise<void> {
-    const w = await this.get(name);
-    if (!w) throw new Error(`No workflow "${name}"`);
-    const file = this.file(name);
-    await writeFile(file, JSON.stringify({ ...w, approvedHash: hashScript(w.lang, w.script) }, null, 2) + '\n');
+  /**
+   * Record approval of exactly the script the user was shown. Refuses if the
+   * file changed again while the prompt was open, so an unseen script is never approved.
+   */
+  async reapprove(shown: Workflow): Promise<void> {
+    const cur = await this.get(shown.name);
+    if (!cur || cur.script !== shown.script || cur.lang !== shown.lang)
+      throw new Error(`Workflow "${shown.name}" changed again while awaiting approval; run it again to review the new version.`);
+    await this.writeAtomic(this.file(shown.name), { ...cur, approvedHash: hashScript(shown.lang, shown.script) });
+  }
+
+  private async writeAtomic(file: string, w: Workflow): Promise<void> {
+    const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`;
+    await writeFile(tmp, JSON.stringify(w, null, 2) + '\n');
+    await rename(tmp, file);
   }
 
   onChange(cb: () => void): void {
@@ -121,6 +128,11 @@ export class WorkflowStore {
     if (this.watcher) return;
     mkdirSync(this.dir, { recursive: true });
     this.watcher = watch(this.dir, () => this.emit());
+    // e.g. directory deleted or permissions changed: stop watching rather than crash
+    this.watcher.on('error', () => {
+      this.watcher?.close();
+      this.watcher = undefined;
+    });
   }
 
   private emit(): void {

@@ -112,6 +112,7 @@ describe('server', () => {
     expect(r.isError).toBeFalsy();
     expect(dialog).toHaveBeenCalledTimes(1);
     expect(dialog.mock.calls[0][0].note).toContain('hello');
+    expect(dialog.mock.calls[0][0].note).toMatch(/ANY value for: who \(argv 1\)/);
     const tools = (await client.listTools()).tools;
     const t = tools.find((x) => x.name === 'workflow_hello')!;
     expect(t.description).toContain('Say hello');
@@ -162,6 +163,12 @@ describe('server', () => {
     await client.callTool({ name: 'delete_workflow', arguments: { name: 'gone' } });
     await sync();
     expect((await client.listTools()).tools.map((t) => t.name)).not.toContain('workflow_gone');
+  });
+
+  it('save prompt warns even without params that it runs unprompted later', async () => {
+    await connect();
+    await client.callTool({ name: 'run_applescript', arguments: { script: 'beep', saveAs: 'np' } });
+    expect(dialog.mock.calls[0][0].note).toMatch(/WITHOUT asking/);
   });
 
   it('unknown workflow errors', async () => {

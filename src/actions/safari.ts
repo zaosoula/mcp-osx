@@ -6,7 +6,7 @@ export const safariActions: Action[] = [
   {
     name: 'safari_open_url',
     description: 'Open a URL in Safari (new tab in the front window by default).',
-    schema: { url: z.string().url(), newWindow: z.boolean().optional() },
+    schema: { url: z.string().url().refine((u) => /^https?:\/\//i.test(u), 'Only http(s) URLs are allowed').describe('http(s) URL'), newWindow: z.boolean().optional() },
     build: ({ url, newWindow }) => ({
       script: as([
         'on run argv',
