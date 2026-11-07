@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import { actions } from '../src/actions.js';
+import { actions } from '../src/actions/index.js';
 import { runOsa } from '../src/osascript.js';
 
 const S = 'ZZ_SENTINEL';
