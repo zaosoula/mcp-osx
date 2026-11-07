@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { getAppDictionary, listScriptableApps, resolveApp, summarizeSdef, type Exec } from '../src/dictionary.js';
+import { getAppDictionary, listScriptableApps, resolveApp, resolveIncludes, summarizeSdef, type Exec } from '../src/dictionary.js';
 
 const xml = readFileSync(new URL('./fixtures/mini.sdef', import.meta.url), 'utf8');
 const mac = process.platform === 'darwin';
@@ -59,5 +59,40 @@ describe.runIf(mac)('on macOS', () => {
   it('reads a real dictionary by name', async () => {
     expect(await resolveApp('finder')).toMatch(/Finder\.app$/);
     expect(await getAppDictionary('Finder', 'empty')).toContain('cmd empty');
+  });
+});
+
+describe('real-world sdef quirks', () => {
+  it('parses DOCTYPE with an internal subset and parameter entities (Keynote/Pages/Numbers)', () => {
+    const x = `<?xml version="1.0"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd"
+[
+    <!ELEMENT class (cocoa?, type?)>
+    <!ENTITY % common.attrib
+        "xmlns:xi   CDATA   #FIXED 'http://www.w3.org/2001/XInclude'">
+]>
+<dictionary><suite name="K"><command name="start"/></suite></dictionary>`;
+    expect(summarizeSdef(x)).toContain('cmd start()');
+  });
+
+  it('inlines xi:include suites and honours excluded command names', async () => {
+    const { mkdtemp, writeFile } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const d = await mkdtemp(join(tmpdir(), 'sdef-'));
+    const std = join(d, 'Std.sdef');
+    await writeFile(std, '<dictionary><suite name="Standard Suite"><command name="count"/><command name="delete"/><command name="make"/></suite></dictionary>');
+    const app = `<dictionary xmlns:xi="http://www.w3.org/2001/XInclude"><suite name="Standard Suite"><xi:include href="file://localhost${std}" xpointer="xpointer(/dictionary/suite/node()[not(self::command and ((@name = 'delete')))])"/></suite><suite name="App"><command name="go"/></suite></dictionary>`;
+    const s = summarizeSdef(await resolveIncludes(app));
+    expect(s).toContain('suite Standard Suite');
+    expect(s).toContain('cmd count()');
+    expect(s).toContain('cmd make()');
+    expect(s).not.toContain('cmd delete()');
+    expect(s).toContain('cmd go()');
+  });
+
+  it('leaves unreadable includes out without failing', async () => {
+    const app = `<dictionary><xi:include href="file:///nope/x.sdef" xpointer="xpointer(/dictionary/suite)"/><suite name="App"><command name="go"/></suite></dictionary>`;
+    expect(summarizeSdef(await resolveIncludes(app))).toContain('cmd go()');
   });
 });

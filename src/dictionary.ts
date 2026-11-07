@@ -122,9 +122,53 @@ function renderClass(c: Node, ext = false): string {
   return lines.join('\n');
 }
 
+/** Drop the XML declaration and DOCTYPE (incl. internal subsets with parameter entities). */
+function stripProlog(xml: string): string {
+  return xml.replace(/<\?xml[^>]*\?>/, '').replace(/<!DOCTYPE[^[>]*(\[[\s\S]*?\]\s*)?>/, '');
+}
+
+const INCLUDE_RE = /<xi:include\b([^>]*?)\/>/g;
+const attr = (attrs: string, name: string) => new RegExp(`${name}\\s*=\\s*"([^"]*)"`).exec(attrs)?.[1];
+
+/**
+ * Inline local `<xi:include>`s (e.g. CocoaStandard.sdef) that `sdef` leaves
+ * unresolved. Supports xpointers selecting `/dictionary/suite` or its children,
+ * with `not(self::command and (@name = '…' or …))` exclusions. Unreadable
+ * includes are dropped.
+ */
+export async function resolveIncludes(xml: string, depth = 0): Promise<string> {
+  const matches = [...xml.matchAll(INCLUDE_RE)];
+  if (!matches.length || depth > 2) return xml.replace(INCLUDE_RE, '');
+  const parts = await Promise.all(
+    matches.map(async (m) => {
+      const href = attr(m[1], 'href') ?? '';
+      const xp = (attr(m[1], 'xpointer') ?? '').replace(/&apos;/g, "'").replace(/&quot;/g, '"');
+      const path = href.replace(/^file:\/\/(localhost)?/, '');
+      if (!path.startsWith('/')) return '';
+      let inc: string;
+      try {
+        inc = stripProlog(await readFile(decodeURIComponent(path), 'utf8'));
+      } catch {
+        return '';
+      }
+      inc = await resolveIncludes(inc, depth + 1);
+      const suites = [...inc.matchAll(/<suite\b[\s\S]*?<\/suite>/g)].map((x) => x[0]);
+      let body = /\/suite\/node\(\)/.test(xp) ? suites.map((x) => x.replace(/^<suite\b[^>]*>/, '').replace(/<\/suite>$/, '')).join('\n') : suites.join('\n');
+      if (/not\(/.test(xp))
+        for (const [, name] of xp.matchAll(/@name\s*=\s*'([^']+)'/g)) {
+          const n = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          body = body.replace(new RegExp(`<command\\b[^>]*name="${n}"[^>]*?(\\/>|>[\\s\\S]*?<\\/command>)`, 'g'), '');
+        }
+      return body;
+    }),
+  );
+  let i = 0;
+  return xml.replace(INCLUDE_RE, () => parts[i++]);
+}
+
 /** Turn raw sdef XML into a compact, agent-friendly summary. */
 export function summarizeSdef(xml: string, filter?: string): string {
-  const doc = parser.parse(xml) as Node;
+  const doc = parser.parse(stripProlog(xml)) as Node;
   const suites = (doc.dictionary?.suite ?? []) as Node[];
   const f = filter?.trim().toLowerCase();
   const match = (name?: string) => !f || (name ?? '').toLowerCase().includes(f);
@@ -155,7 +199,7 @@ export async function getAppDictionary(app: string, filter?: string, exec: Exec 
   if (!xml) {
     const r = await exec('sdef', [path]);
     if (r.code !== 0 || !r.stdout.trim()) throw new Error(`${app} has no scripting dictionary${r.stderr ? ` (${r.stderr.trim()})` : ''}`);
-    xml = r.stdout;
+    xml = await resolveIncludes(r.stdout);
     if (exec === execCmd) dictCache.set(key, xml);
   }
   return `${basename(path, '.app')} (${path})\n${summarizeSdef(xml, filter)}`;
