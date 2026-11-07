@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="Mini">
+  <suite name="Mini Suite" code="mini" description="Things Mini can do.">
+    <command name="play track" code="spfyPCtx" description="Start playback of a track.">
+      <direct-parameter type="text" description="the URI of the track"/>
+      <parameter name="in context" code="ctxt" type="text" optional="yes" description="the context"/>
+    </command>
+    <command name="pause" code="spfyPaus" description="Pause playback."/>
+    <command name="count tracks" code="mimiCnt">
+      <parameter name="matching" code="mtch">
+        <type type="text" list="yes"/>
+      </parameter>
+      <result type="integer" description="how many"/>
+    </command>
+    <class name="track" code="cTrk" description="A Spotify track." inherits="item">
+      <property name="name" code="pnam" type="text" access="r" description="The name of the track."/>
+      <property name="starred" code="spst" type="boolean" description="Is starred?"/>
+      <element type="artwork" access="r"/>
+    </class>
+    <class-extension extends="application">
+      <property name="current track" code="pTrk" type="track" access="r"/>
+    </class-extension>
+    <enumeration name="ePlS" code="ePlS">
+      <enumerator name="stopped" code="kPSS"/>
+      <enumerator name="playing" code="kPSP"/>
+    </enumeration>
+  </suite>
+</dictionary>
