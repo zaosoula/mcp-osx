@@ -1,0 +1,34 @@
+{
+  "name": "mcp-osx",
+  "version": "0.1.0",
+  "description": "MCP server that lets agents control macOS via osascript: named actions, confirmed raw AppleScript/JXA, saved workflows, app dictionary discovery",
+  "type": "module",
+  "bin": {
+    "mcp-osx": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "darwin"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "fast-xml-parser": "^5.12.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0"
+  }
+}
