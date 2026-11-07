@@ -56,6 +56,12 @@ describe('server', () => {
     expect(runner.mock.calls[0][0].args).toEqual(['20']);
   });
 
+  it('slow named actions get their own timeout', async () => {
+    await connect();
+    await client.callTool({ name: 'calendar_list_events', arguments: {} });
+    expect(runner.mock.calls[0][0].timeoutMs).toBe(120_000);
+  });
+
   it('named action error carries hint', async () => {
     runner.mockResolvedValueOnce({ stdout: '', stderr: 'Not authorized to send Apple events to Spotify. (-1743)', code: 1 });
     await connect();

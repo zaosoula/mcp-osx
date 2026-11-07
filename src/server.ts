@@ -81,7 +81,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
       { description: a.description, inputSchema: a.schema, annotations: { destructiveHint: false, openWorldHint: false } },
       guard(async (input: Record<string, unknown>) => {
         const built = a.build(input, { config: await deps.config() });
-        const r = await exec(built.script, built.lang, built.args);
+        const r = await exec(built.script, built.lang, built.args, built.timeoutMs);
         return r.ok ? ok(r.out) : fail(r.out);
       }),
     );

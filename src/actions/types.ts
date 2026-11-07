@@ -2,7 +2,8 @@ import type { z } from 'zod';
 import type { Config } from '../config.js';
 import type { Lang } from '../osascript.js';
 
-export type Built = { script: string; lang?: Lang; args: string[] };
+/** timeoutMs: override the default osascript timeout for slow apps (capped by the runner). */
+export type Built = { script: string; lang?: Lang; args: string[]; timeoutMs?: number };
 export type ActionContext = { config: Config };
 export type Action = {
   name: string;

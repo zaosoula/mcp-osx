@@ -5,14 +5,27 @@ import { runOsa } from '../src/osascript.js';
 
 const S = 'ZZ_SENTINEL';
 
+const CANDIDATES = [S, `https://example.com/${S}`, `spotify:track:${S}`, `/tmp/${S}`, `${S.toLowerCase()}@example.com`];
+// date fields are validated ISO strings that travel as numeric argv parts; end must follow start
+const DATE_KEYS: Record<string, string> = { from: '2026-01-02T03:04', to: '2026-01-03T03:04', start: '2026-01-02T03:04', end: '2026-01-02T05:04', due: '2026-01-02T03:04', date: '2026-01-02' };
+const unwrap = (t: z.ZodType): z.ZodType => {
+  let cur: any = t;
+  while (cur instanceof z.ZodOptional || cur instanceof z.ZodDefault || cur instanceof z.ZodNullable) cur = cur.unwrap();
+  return cur;
+};
+
 function sentinelInput(shape: z.ZodRawShape): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, t] of Object.entries(shape)) {
-    const base = t instanceof z.ZodOptional ? t.unwrap() : t;
-    if (base instanceof z.ZodString) out[k] = k === 'url' ? `https://example.com/${S}` : k === 'uri' ? `spotify:track:${S}` : S;
-    else if (base instanceof z.ZodBoolean) out[k] = true;
-    else if (base instanceof z.ZodNumber) out[k] = 42;
+    const base = unwrap(t as z.ZodType);
+    if (base instanceof z.ZodString && DATE_KEYS[k]) out[k] = DATE_KEYS[k];
+    else if (base instanceof z.ZodString) {
+      const hit = CANDIDATES.find((c) => base.safeParse(c).success);
+      out[k] = hit ?? (base.safeParse('2026-01-02T03:04:00').success ? '2026-01-02T03:04:00' : undefined);
+    } else if (base instanceof z.ZodBoolean) out[k] = true;
+    else if (base instanceof z.ZodNumber) out[k] = base.safeParse(1).success ? 1 : 42;
     else if (base instanceof z.ZodEnum) out[k] = base.options[0];
+    else if (base instanceof z.ZodArray) out[k] = [CANDIDATES.find((c) => (base as any).element.safeParse(c).success) ?? S];
   }
   return out;
 }
@@ -58,6 +71,50 @@ describe('actions', () => {
     const r = await runOsa(a.build({}, { config: {} }));
     expect(r.stdout).toMatch(/^(true|false)$/);
   });
+});
+
+// Commands that must never appear in an unconfirmed named action (spec anti-goal).
+const FORBIDDEN = [
+  /\bsend\b/i, /\bdelete\b/i, /\bdo JavaScript\b/i, /\bexecute\b/i, /\bdo script\b/i, /\bempty\b/i,
+  /\berase\b/i, /\beject\b/i, /\bshut down\b/i, /\brestart\b/i, /\blog out\b/i, /\bexport\b/i,
+  /\bforward\b/i, /\breply\b/i, /\bredirect\b/i, /\bbounce\b/i, /\bpassword\b/i, /rm -/, /\bsave\b/i,
+];
+
+describe('safety', () => {
+  const ctx = { config: { spotify: { favorites: 'spotify:playlist:x' } } };
+  const built = () => actions.map((a) => ({ a, b: a.build(z.object(a.schema).parse(sentinelInput(a.schema)), ctx) }));
+
+  it('no named action script uses a destructive or code-executing command', () => {
+    // reviewed exceptions: the word is a harmless, app-specific command here
+    const allow: Record<string, RegExp[]> = {
+      chromium_go: [/\bforward\b/i], // browser history navigation
+      vlc_control: [/\bforward\b/i], // `step forward` playback
+      quicktime_control: [/\bforward\b/i], // `step forward` playback
+      notes_read: [/\bpassword\b/i], // reads `password protected` to refuse locked notes
+      lookaway_control: [/\brestart\b/i], // `restart lookaway` only resets break timers
+    };
+    for (const { a, b } of built()) {
+      expect(b.script, `${a.name} must not hide commands behind raw event codes`).not.toMatch(/«event/);
+      const script = b.script.replace(/"[^"]*"/g, '""'); // ignore string literals
+      for (const re of FORBIDDEN) {
+        if ((allow[a.name] ?? []).some((x) => x.source === re.source)) continue;
+        expect(script, `${a.name} matches ${re}`).not.toMatch(re);
+      }
+    }
+  });
+
+  it.runIf(process.platform === 'darwin')('every named action script compiles', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const failures: string[] = [];
+    for (const { a, b } of built()) {
+      try {
+        execFileSync('osacompile', ['-l', b.lang === 'javascript' ? 'JavaScript' : 'AppleScript', '-o', '/dev/null', '-'], { input: b.script, stdio: ['pipe', 'ignore', 'pipe'] });
+      } catch (e) {
+        failures.push(`${a.name}: ${String((e as any).stderr).trim()}`);
+      }
+    }
+    expect(failures).toEqual([]);
+  }, 120_000);
 });
 
 describe('review fixes', () => {
