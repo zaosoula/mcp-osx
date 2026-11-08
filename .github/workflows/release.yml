@@ -29,8 +29,8 @@ jobs:
       matrix:
         node: [20, 22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -53,11 +53,11 @@ jobs:
       released: ${{ steps.bump.outputs.released }}
       version: ${{ steps.bump.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # no `npm ci`: the package is macOS-only ("os": ["darwin"]) and this job only needs changelogen
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - name: Bump version, changelog, tag
@@ -108,17 +108,17 @@ jobs:
     if: needs.version.outputs.released == 'true'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: v${{ needs.version.outputs.version }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build
       - run: npm run test:dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: package
           path: |
@@ -138,10 +138,10 @@ jobs:
       contents: read
       id-token: write # npm Trusted Publishing (OIDC) + provenance
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: package
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -155,7 +155,7 @@ jobs:
       contents: read
       id-token: write # MCP Registry GitHub OIDC login
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: package
       - name: Publish to the MCP Registry
@@ -170,11 +170,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: v${{ needs.version.outputs.version }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
       - run: npx -y changelogen@0.6.2 gh release
