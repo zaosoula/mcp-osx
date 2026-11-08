@@ -1,10 +1,11 @@
-import { McpServer, type CallToolResult, type RegisteredTool, type ServerContext } from '@modelcontextprotocol/server';
+import { McpServer, type CallToolResult, type InputRequiredResult, type RegisteredTool, type ServerContext } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { actionGroups, selectActions } from './actions/index.js';
 import type { Action } from './actions/types.js';
 import { searchActions } from './search.js';
 import type { Config } from './config.js';
-import { confirm, nativeDialog, type ConfirmRequest, type Dialog, type Elicit } from './confirm.js';
+import { createApproval } from './approval.js';
+import { nativeDialog, type Dialog } from './confirm.js';
 import { getAppDictionary, listScriptableApps } from './dictionary.js';
 import { explainError } from './errors.js';
 import { DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, type Lang, type Runner } from './osascript.js';
@@ -27,9 +28,10 @@ const ok = (text: string): CallToolResult => ({ content: [{ type: 'text', text: 
 const fail = (text: string): CallToolResult => ({ content: [{ type: 'text', text }], isError: true });
 
 /** Run a handler, turning thrown errors into MCP error results. */
+type ToolReturn = CallToolResult | InputRequiredResult;
 const guard =
-  <A>(fn: (args: A, ctx: ServerContext) => Promise<CallToolResult>) =>
-  async (args: A, ctx: ServerContext): Promise<CallToolResult> => {
+  <A>(fn: (args: A, ctx: ServerContext) => Promise<ToolReturn>) =>
+  async (args: A, ctx: ServerContext): Promise<ToolReturn> => {
     try {
       return await fn(args, ctx);
     } catch (e) {
@@ -47,9 +49,11 @@ const paramSchema = z.object({
 export function createServer(deps: ServerDeps): { server: McpServer; sync: () => Promise<void> } {
   const { runner, store } = deps;
   const dialog = deps.dialog ?? nativeDialog;
+  let verifyState: ((state: string, ctx: ServerContext) => Promise<unknown>) | undefined;
   const server = new McpServer(
     { name: 'mcp-osx', version: deps.version ?? '0.0.0' },
     {
+      requestState: { verify: (state, ctx) => verifyState!(state, ctx) },
       instructions: [
         'Control macOS through osascript.',
         `Named actions are prefixed by app: ${Object.keys(actionGroups).filter((g) => !deps.apps || deps.apps.includes(g)).map((g) => `${g}_*`).join(', ')}.`,
@@ -64,25 +68,9 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
     },
   );
 
-  /**
-   * Per-request elicitation (2025-era protocol). Throws when the client lacks the
-   * capability or on 2026-07-28 connections; confirm() then falls back to the native dialog.
-   */
-  const elicitFor =
-    (ctx: ServerContext): Elicit =>
-    async (message) => {
-      const r = await ctx.mcpReq.elicitInput({
-        mode: 'form',
-        message,
-        requestedSchema: {
-          type: 'object',
-          properties: { approve: { type: 'boolean', title: 'Approve', description: 'Check to allow this action' } },
-          required: ['approve'],
-        },
-      });
-      return r.action === 'accept' && r.content?.approve === true ? 'accept' : r.action === 'cancel' ? 'cancel' : 'decline';
-    };
-  const ask = (req: ConfirmRequest, ctx: ServerContext) => confirm(req, { elicit: elicitFor(ctx), runner, dialog });
+  const approval = createApproval({ runner, dialog, getServer: () => server });
+  verifyState = approval.verifyState;
+  const ask = approval.approve;
 
   const exec = async (script: string, lang: Lang | undefined, args: string[], timeoutMs?: number) => {
     const r = await runner({ script, lang, args, timeoutMs });
@@ -174,8 +162,9 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
         ? `If it succeeds it will be saved as workflow "${saveAs}"${existing ? ' (replacing the existing one)' : ''} and can then run WITHOUT asking.${paramNote}`
         : undefined;
       const argNote = args.length ? `\nargv: ${JSON.stringify(args)}` : '';
-      if (!(await ask({ title: 'Allow the agent to run this script?', script, lang, note: (note ?? '') + argNote || undefined }, ctx)))
-        return fail('Denied by user. The script was not run.');
+      const decision = await ask({ title: 'Allow the agent to run this script?', script, lang, note: (note ?? '') + argNote || undefined }, ctx);
+      if (typeof decision !== 'boolean') return decision;
+      if (!decision) return fail('Denied by user. The script was not run.');
       const r = await exec(script, lang, args, timeoutMs);
       if (!r.ok) return fail(r.out + (saveAs ? '\nNot saved as a workflow because it failed.' : ''));
       if (saveAs) {
@@ -204,7 +193,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
   );
 
   // ---- workflows ----
-  const runWorkflow = async (name: string, input: Record<string, string>, ctx: ServerContext): Promise<CallToolResult> => {
+  const runWorkflow = async (name: string, input: Record<string, string>, ctx: ServerContext): Promise<CallToolResult | InputRequiredResult> => {
     const w = await store.get(name);
     if (!w) return fail(`No workflow named "${name}". Use list_workflows.`);
     const args = argsFor(w, input);
@@ -215,6 +204,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
         lang: w.lang,
         note: 'Script changed on disk since approval. Approving re-saves its approval.',
       }, ctx);
+      if (typeof allowed !== 'boolean') return allowed;
       if (!allowed) return fail('Denied by user: the workflow script changed since it was approved.');
       await store.reapprove(w);
     }
@@ -245,8 +235,9 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
     guard(async ({ name }, ctx) => {
       const w = await store.get(name);
       if (!w) return fail(`No workflow named "${name}".`);
-      if (!(await ask({ title: `Delete workflow "${name}"?`, script: w.script, lang: w.lang, note: 'This removes the saved workflow below.' }, ctx)))
-        return fail('Denied by user. Workflow kept.');
+      const decision = await ask({ title: `Delete workflow "${name}"?`, script: w.script, lang: w.lang, note: 'This removes the saved workflow below.' }, ctx);
+      if (typeof decision !== 'boolean') return decision;
+      if (!decision) return fail('Denied by user. Workflow kept.');
       await store.delete(name);
       await sync();
       return ok(`Deleted workflow ${name}.`);
