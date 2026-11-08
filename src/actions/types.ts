@@ -11,6 +11,13 @@ export type Action = {
   schema: z.ZodRawShape;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   build(input: any, ctx: ActionContext): Built;
+  /**
+   * Declares that stdout is one tab-separated record per line with these
+   * columns, in order. The server then returns typed `structuredContent`
+   * ({ items: [...], notes: [...] }) with a matching `outputSchema`.
+   * Lines whose field count differs (e.g. "(12 more not shown)") become notes.
+   */
+  output?: { columns: string[] };
 };
 
 // Every action script is constant. Inputs only ever travel through argv.
