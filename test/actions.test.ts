@@ -104,16 +104,29 @@ describe('safety', () => {
     }
   });
 
-  it.runIf(process.platform === 'darwin')('every named action script compiles', async () => {
+  it.runIf(process.platform === 'darwin')('every named action script compiles (when its apps are installed)', async () => {
     const { execFileSync } = await import('node:child_process');
+    const { existsSync } = await import('node:fs');
+    const { homedir } = await import('node:os');
+    // osacompile needs the target app's dictionary; CI runners lack Spotify, VLC, Keynote...
+    const dirs = ['/Applications', '/Applications/Setapp', '/System/Applications', '/System/Applications/Utilities', '/System/Library/CoreServices', `${homedir()}/Applications`];
+    const installed = (app: string) => dirs.some((d) => existsSync(`${d}/${app}.app`));
     const failures: string[] = [];
+    const skipped: string[] = [];
     for (const { a, b } of built()) {
+      const apps = [...b.script.matchAll(/application "([^"]+)"/g)].map((m) => m[1]);
+      const missing = apps.filter((x) => !installed(x));
+      if (missing.length) {
+        skipped.push(`${a.name} (${[...new Set(missing)].join(', ')} not installed)`);
+        continue;
+      }
       try {
         execFileSync('osacompile', ['-l', b.lang === 'javascript' ? 'JavaScript' : 'AppleScript', '-o', '/dev/null', '-'], { input: b.script, stdio: ['pipe', 'ignore', 'pipe'] });
       } catch (e) {
         failures.push(`${a.name}: ${String((e as any).stderr).trim()}`);
       }
     }
+    if (skipped.length) console.warn(`compile check skipped ${skipped.length}: ${skipped.join('; ')}`);
     expect(failures).toEqual([]);
   }, 120_000);
 });
