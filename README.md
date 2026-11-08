@@ -2,7 +2,7 @@
 
 An MCP server that lets AI agents control macOS through `osascript`. It provides:
 
-- **Named actions** for common tasks (dark mode, Safari, Spotify, volume, Wi-Fi, apps). These are safe, quick, and run without a prompt.
+- **87 named actions across 19 app groups**: system settings, Finder, Safari, Chrome and Brave, Spotify, Music, TV, VLC, QuickTime, Photos, Keynote, Calendar, Reminders, Notes, Contacts, Mail, LookAway and more. They are non-destructive and run without a prompt.
 - **`run_applescript`**, which runs any AppleScript or JXA the agent writes, but only after **you approve the exact script**.
 - **Workflows**: an approved script can be saved as a reusable `workflow_<name>` tool.
 - **Dictionary discovery**: the agent can read any app's AppleScript dictionary (`sdef`) to learn what the app supports. This lets it script apps that have no named action.
@@ -37,26 +37,79 @@ Then point your client at `node /path/to/mcp-osx/dist/index.js`.
 
 ## Tools
 
+**Named actions** are prefixed by app group. Each group lives in `src/actions/<group>.ts`.
+
+| Group | Examples |
+|-------|----------|
+| `system` | dark mode, volume, mute, Wi-Fi, clipboard, `say`, notification, screensaver, display sleep, battery, system info |
+| `settings` | open a System Settings pane |
+| `app` | open, activate, quit, list running, frontmost |
+| `finder` | reveal, open folder, selection, front window path, list folder |
+| `safari`, `chromium` | open URL, list/activate tabs, current tab, search, reading list (Safari); reload, back/forward (Chrome/Brave) |
+| `spotify`, `music`, `tv`, `vlc`, `quicktime` | playback control, now playing, playlists, open stream URL |
+| `photos`, `keynote` | albums, slideshow and presentation control |
+| `calendar`, `reminders`, `notes`, `contacts` | list, read and search; create events, reminders and notes (never with attendees) |
+| `mail` | accounts, unread count, list/read messages, check mail, **open a draft (never sends)** |
+| `lookaway` | break-reminder control |
+
+**Always available:**
+
 | Tool | What it does |
 |------|--------------|
-| `system_get_dark_mode`, `system_set_dark_mode` | Appearance |
-| `system_get_volume`, `system_set_volume`, `system_set_muted` | Audio output |
-| `system_wifi_status`, `system_set_wifi` | Wi-Fi power. Turning it off can cut the agent's own connection. |
-| `system_notify` | Show a notification |
-| `safari_open_url`, `safari_current_tab` | Safari |
-| `spotify_control`, `spotify_current_track`, `spotify_play`, `spotify_play_favorites` | Spotify |
-| `app_open`, `app_activate`, `app_quit`, `app_list_running`, `app_frontmost` | Any application |
-| `list_scriptable_apps`, `get_app_dictionary` | Discover what apps can be scripted to do (read-only) |
 | `run_applescript` | Run any AppleScript or JXA **after approval**. Can save it as a workflow. |
+| `list_scriptable_apps`, `get_app_dictionary` | Discover what any app can be scripted to do (read-only) |
 | `list_workflows`, `run_workflow`, `delete_workflow`, `workflow_<name>` | Saved workflows |
+| `search_actions`, `run_action` | Find and run named actions (compact mode only) |
 
-The named actions are in `src/actions/`, one file per app. To add an app, create `src/actions/<app>.ts` and list it in `src/actions/index.ts`.
+Some actions are deliberately missing. Anything that sends (Mail, Messages), deletes, empties, erases, runs code (JavaScript in browsers, Terminal `do script`, Shortcuts), writes files (export, save) or records is not a named action. The agent can still do it through `run_applescript`, which asks you first. A test enforces this for every named action, along with an `osacompile` check that every action script compiles.
+
+To add an app, create `src/actions/<group>.ts`, prefix every action name with `<group>_`, and register the file in `actionGroups` in `src/actions/index.ts`.
+
+## Context size: full vs compact mode
+
+Every MCP tool definition counts against the agent's context.
+
+| Mode | Tools listed | Up-front cost | Best for |
+|------|--------------|---------------|----------|
+| `full` (default) | 87 named actions + core tools | ~11k tokens if all loaded | Clients with **tool search**, such as Claude Code. They defer tools and load them on demand, so only the names cost tokens. |
+| `compact` | `search_actions`, `run_action` + core tools | ~1.2k tokens | Clients that load every tool definition up front |
+
+In compact mode, `search_actions("pause song")` returns the matching actions with their full JSON input schemas, and `run_action` validates the arguments against those schemas before running.
+
+```json
+{ "mcpServers": { "osx": { "command": "npx", "args": ["-y", "mcp-osx"], "env": { "MCP_OSX_MODE": "compact" } } } }
+```
+
+Limit the named actions to the app groups you use, in either mode:
+
+```json
+"env": { "MCP_OSX_APPS": "system,app,safari,spotify,calendar" }
+```
+
+An unknown group name stops the server at startup with the list of valid groups.
+
+**Calling the Claude API directly with the MCP connector?** An MCP server can't mark its own tools as deferred; the API caller sets that. Defer everything and keep the core tools loaded:
+
+```json
+{
+  "type": "mcp_toolset",
+  "mcp_server_name": "osx",
+  "default_config": { "defer_loading": true },
+  "configs": {
+    "run_applescript": { "defer_loading": false },
+    "get_app_dictionary": { "defer_loading": false },
+    "list_workflows": { "defer_loading": false }
+  }
+}
+```
+
+Add a `tool_search_tool_bm25_20251119` tool to the same request. Tool names are prefixed by app and descriptions use everyday task words, so searches such as "spotify" or "calendar event" find the right tools.
 
 ## Confirmation
 
 Every `run_applescript` call, every deletion of a workflow, and every run of a workflow whose file changed must be approved:
 
-1. If your MCP client supports **elicitation**, the script is shown in the chat and you approve it there.
+1. If your MCP client supports **elicitation** (protocol 2025-era), the script is shown in the chat and you approve it there.
 2. Otherwise, a **native macOS dialog** shows the full script in a scrollable view. **Deny** is the default button, and the dialog denies automatically after 120 seconds.
 
 Anything other than an explicit approval, such as an error, timeout, or closed dialog, counts as **deny**.
@@ -99,6 +152,9 @@ Scripts that click UI elements through System Events also need **Accessibility**
 - More generally, any agent with shell access can run `osascript` itself. This server only controls access through its own interface.
 
 ## Development
+
+Built on the MCP TypeScript SDK v2 (`@modelcontextprotocol/server`). `serveStdio` serves both 2025-era and 2026-07-28 clients. Clients on the 2026-07-28 protocol get the native dialog for confirmations, because push-style elicitation isn't available there yet.
+
 
 ```bash
 npm test        # vitest; macOS-only tests run real osascript

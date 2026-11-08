@@ -141,7 +141,7 @@ export const calendarActions: Action[] = [
   },
   {
     name: 'calendar_create_event',
-    description: 'Create a Calendar event (no attendees, no invitations sent) and return its summary, start, end and calendar.',
+    description: 'Create a Calendar event (no attendees, no invitations sent) and return its summary, start, end and calendar. Example: {"title":"Dentist","start":"2026-11-12T14:30","end":"2026-11-12T15:15","calendar":"Personnel","location":"12 rue X"}',
     schema: {
       title: z.string().min(1),
       start: isoDate,

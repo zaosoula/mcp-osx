@@ -1,5 +1,4 @@
-import { McpServer, type RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { McpServer, type CallToolResult, type RegisteredTool, type ServerContext } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { actionGroups, selectActions } from './actions/index.js';
 import type { Action } from './actions/types.js';
@@ -29,10 +28,10 @@ const fail = (text: string): CallToolResult => ({ content: [{ type: 'text', text
 
 /** Run a handler, turning thrown errors into MCP error results. */
 const guard =
-  <A>(fn: (args: A) => Promise<CallToolResult>) =>
-  async (args: A): Promise<CallToolResult> => {
+  <A>(fn: (args: A, ctx: ServerContext) => Promise<CallToolResult>) =>
+  async (args: A, ctx: ServerContext): Promise<CallToolResult> => {
     try {
-      return await fn(args);
+      return await fn(args, ctx);
     } catch (e) {
       return fail((e as Error).message);
     }
@@ -65,20 +64,25 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
     },
   );
 
-  const elicit: Elicit = async (message) => {
-    if (!server.server.getClientCapabilities()?.elicitation) throw new Error('no elicitation');
-    const r = await server.server.elicitInput({
-      message,
-      requestedSchema: {
-        type: 'object',
-        properties: { approve: { type: 'boolean', title: 'Approve', description: 'Check to allow this action' } },
-        required: ['approve'],
-      },
-    });
-    return r.action === 'accept' && r.content?.approve === true ? 'accept' : r.action === 'cancel' ? 'cancel' : 'decline';
-  };
-  const ask = (req: ConfirmRequest) =>
-    confirm(req, { elicit: server.server.getClientCapabilities()?.elicitation ? elicit : undefined, runner, dialog });
+  /**
+   * Per-request elicitation (2025-era protocol). Throws when the client lacks the
+   * capability or on 2026-07-28 connections; confirm() then falls back to the native dialog.
+   */
+  const elicitFor =
+    (ctx: ServerContext): Elicit =>
+    async (message) => {
+      const r = await ctx.mcpReq.elicitInput({
+        mode: 'form',
+        message,
+        requestedSchema: {
+          type: 'object',
+          properties: { approve: { type: 'boolean', title: 'Approve', description: 'Check to allow this action' } },
+          required: ['approve'],
+        },
+      });
+      return r.action === 'accept' && r.content?.approve === true ? 'accept' : r.action === 'cancel' ? 'cancel' : 'decline';
+    };
+  const ask = (req: ConfirmRequest, ctx: ServerContext) => confirm(req, { elicit: elicitFor(ctx), runner, dialog });
 
   const exec = async (script: string, lang: Lang | undefined, args: string[], timeoutMs?: number) => {
     const r = await runner({ script, lang, args, timeoutMs });
@@ -97,7 +101,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
     for (const a of selected) {
       server.registerTool(
         a.name,
-        { description: a.description, inputSchema: a.schema, annotations: { destructiveHint: false, openWorldHint: false } },
+        { description: a.description, inputSchema: z.object(a.schema), annotations: { destructiveHint: false, openWorldHint: false } },
         guard(async (input: Record<string, unknown>) => runNamed(a, input)),
       );
     }
@@ -111,7 +115,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
           `Find named macOS actions (no confirmation needed) by keywords, e.g. "pause song", "dark mode", "open url chrome". ` +
           `Returns matching actions with full JSON input schemas; call them with run_action. ` +
           `Empty query lists every action name by app. Apps: ${groups.join(', ')}.`,
-        inputSchema: { query: z.string().describe('Keywords describing what to do'), limit: z.number().int().min(1).max(20).optional().describe('Default 5') },
+        inputSchema: z.object({ query: z.string().describe('Keywords describing what to do'), limit: z.number().int().min(1).max(20).optional().describe('Default 5') }),
         annotations: { readOnlyHint: true },
       },
       guard(async ({ query, limit }) => {
@@ -126,7 +130,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
       'run_action',
       {
         description: 'Run a named macOS action found with search_actions. args must match its inputSchema.',
-        inputSchema: { name: z.string(), args: z.record(z.string(), z.unknown()).optional() },
+        inputSchema: z.object({ name: z.string(), args: z.record(z.string(), z.unknown()).optional() }),
       },
       guard(async ({ name, args }) => {
         const a = byName.get(name);
@@ -145,8 +149,10 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
       description:
         'Run an arbitrary AppleScript (or JXA) after the user approves it in a confirmation prompt. ' +
         'Pass dynamic values via `args` (read with `on run argv` / `function run(argv)`) instead of embedding them. ' +
-        'Set saveAs to store the approved script as a reusable workflow_<saveAs> tool whose `params` map to argv in order.',
-      inputSchema: {
+        'Set saveAs to store the approved script as a reusable workflow_<saveAs> tool whose `params` map to argv in order. ' +
+        'Example: {"script":"on run argv\\ntell application \\"Safari\\" to open location (\\"https://github.com/\\" & item 1 of argv)\\nend run",' +
+        '"args":["anthropics"],"saveAs":"open_github","description":"Open a GitHub org or repo","params":[{"name":"path","required":true}]}',
+      inputSchema: z.object({
         script: z.string().min(1),
         language: langSchema,
         args: z.array(z.string()).optional().describe('Values passed as argv'),
@@ -154,10 +160,10 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
         saveAs: z.string().optional().describe('Workflow name: lowercase letters, digits, _'),
         description: z.string().optional().describe('Workflow description (with saveAs)'),
         params: z.array(paramSchema).optional().describe('Workflow parameters (with saveAs)'),
-      },
+      }),
       annotations: { destructiveHint: true, openWorldHint: true },
     },
-    guard(async ({ script, language, args = [], timeoutMs, saveAs, description, params = [] }) => {
+    guard(async ({ script, language, args = [], timeoutMs, saveAs, description, params = [] }, ctx) => {
       const lang: Lang = language ?? 'applescript';
       if (saveAs !== undefined && !validName(saveAs)) return fail(`Invalid workflow name "${saveAs}": use lowercase letters, digits and _ (start with a letter, max 48 chars)`);
       const existing = saveAs ? await store.get(saveAs) : undefined;
@@ -168,7 +174,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
         ? `If it succeeds it will be saved as workflow "${saveAs}"${existing ? ' (replacing the existing one)' : ''} and can then run WITHOUT asking.${paramNote}`
         : undefined;
       const argNote = args.length ? `\nargv: ${JSON.stringify(args)}` : '';
-      if (!(await ask({ title: 'Allow the agent to run this script?', script, lang, note: (note ?? '') + argNote || undefined })))
+      if (!(await ask({ title: 'Allow the agent to run this script?', script, lang, note: (note ?? '') + argNote || undefined }, ctx)))
         return fail('Denied by user. The script was not run.');
       const r = await exec(script, lang, args, timeoutMs);
       if (!r.ok) return fail(r.out + (saveAs ? '\nNot saved as a workflow because it failed.' : ''));
@@ -184,21 +190,21 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
   // ---- dictionary discovery ----
   server.registerTool(
     'list_scriptable_apps',
-    { description: 'List installed apps that ship an AppleScript dictionary.', inputSchema: {}, annotations: { readOnlyHint: true } },
+    { description: 'List installed apps that ship an AppleScript dictionary.', inputSchema: z.object({}), annotations: { readOnlyHint: true } },
     guard(async () => ok((await listScriptableApps()).map((a) => `${a.name}\t${a.path}`).join('\n'))),
   );
   server.registerTool(
     'get_app_dictionary',
     {
       description: "Summarize an app's AppleScript dictionary (commands, classes, properties, enums). Use filter to narrow to a suite/command/class.",
-      inputSchema: { app: z.string().describe('App name (e.g. "Spotify") or absolute .app path'), filter: z.string().optional() },
+      inputSchema: z.object({ app: z.string().describe('App name (e.g. "Spotify") or absolute .app path'), filter: z.string().optional() }),
       annotations: { readOnlyHint: true },
     },
     guard(async ({ app, filter }) => ok(await getAppDictionary(app, filter))),
   );
 
   // ---- workflows ----
-  const runWorkflow = async (name: string, input: Record<string, string>): Promise<CallToolResult> => {
+  const runWorkflow = async (name: string, input: Record<string, string>, ctx: ServerContext): Promise<CallToolResult> => {
     const w = await store.get(name);
     if (!w) return fail(`No workflow named "${name}". Use list_workflows.`);
     const args = argsFor(w, input);
@@ -208,7 +214,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
         script: w.script,
         lang: w.lang,
         note: 'Script changed on disk since approval. Approving re-saves its approval.',
-      });
+      }, ctx);
       if (!allowed) return fail('Denied by user: the workflow script changed since it was approved.');
       await store.reapprove(w);
     }
@@ -218,7 +224,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
 
   server.registerTool(
     'list_workflows',
-    { description: 'List saved workflows.', inputSchema: {}, annotations: { readOnlyHint: true } },
+    { description: 'List saved workflows.', inputSchema: z.object({}), annotations: { readOnlyHint: true } },
     guard(async () => {
       const ws = await store.list();
       if (!ws.length) return ok('No saved workflows. Save one with run_applescript saveAs.');
@@ -229,17 +235,17 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
     'run_workflow',
     {
       description: 'Run a saved workflow by name (same as calling workflow_<name>).',
-      inputSchema: { name: z.string(), params: z.record(z.string(), z.string()).optional() },
+      inputSchema: z.object({ name: z.string(), params: z.record(z.string(), z.string()).optional() }),
     },
-    guard(async ({ name, params }) => runWorkflow(name, params ?? {})),
+    guard(async ({ name, params }, ctx) => runWorkflow(name, params ?? {}, ctx)),
   );
   server.registerTool(
     'delete_workflow',
-    { description: 'Delete a saved workflow (asks the user to confirm).', inputSchema: { name: z.string() }, annotations: { destructiveHint: true } },
-    guard(async ({ name }) => {
+    { description: 'Delete a saved workflow (asks the user to confirm).', inputSchema: z.object({ name: z.string() }), annotations: { destructiveHint: true } },
+    guard(async ({ name }, ctx) => {
       const w = await store.get(name);
       if (!w) return fail(`No workflow named "${name}".`);
-      if (!(await ask({ title: `Delete workflow "${name}"?`, script: w.script, lang: w.lang, note: 'This removes the saved workflow below.' })))
+      if (!(await ask({ title: `Delete workflow "${name}"?`, script: w.script, lang: w.lang, note: 'This removes the saved workflow below.' }, ctx)))
         return fail('Denied by user. Workflow kept.');
       await store.delete(name);
       await sync();
@@ -257,8 +263,8 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
     }
     return server.registerTool(
       `workflow_${w.name}`,
-      { description: `Saved workflow: ${w.description || w.name}`, inputSchema: shape },
-      guard(async (input: Record<string, unknown>) => runWorkflow(w.name, input as Record<string, string>)),
+      { description: `Saved workflow: ${w.description || w.name}`, inputSchema: z.object(shape) },
+      guard(async (input: Record<string, unknown>, ctx) => runWorkflow(w.name, input as Record<string, string>, ctx)),
     );
   };
   let syncing: Promise<void> = Promise.resolve();

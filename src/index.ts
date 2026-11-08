@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { dataDir, loadConfig } from './config.js';
 import { runOsa } from './osascript.js';
 import { createServer } from './server.js';
@@ -19,14 +19,29 @@ mkdirSync(dir, { recursive: true });
 const store = new WorkflowStore(dir);
 const mode = process.env.MCP_OSX_MODE === 'compact' ? 'compact' : 'full';
 const apps = process.env.MCP_OSX_APPS?.split(',').map((s) => s.trim()).filter(Boolean);
-const { server, sync } = createServer({ runner: runOsa, store, config: loadConfig, version, mode, apps: apps?.length ? apps : undefined });
-await sync();
-store.onChange(() => void sync());
+const options = { runner: runOsa, store, config: loadConfig, version, mode, apps: apps?.length ? apps : undefined } as const;
+
+// Fail fast on a bad MCP_OSX_APPS value rather than on the first connection.
+try {
+  createServer(options);
+} catch (e) {
+  console.error(`mcp-osx: ${(e as Error).message}`);
+  process.exit(1);
+}
+
+// serveStdio picks the protocol era from the opening exchange and pins one
+// instance from this factory for the connection.
+const handle = serveStdio(() => {
+  const { server, sync } = createServer(options);
+  void sync();
+  store.onChange(() => void sync());
+  return server;
+});
+
 const shutdown = () => {
   store.close();
+  void handle.close();
   process.exit(0);
 };
 process.stdin.on('end', shutdown);
 process.stdin.on('close', shutdown);
-server.server.onclose = shutdown;
-await server.connect(new StdioServerTransport());

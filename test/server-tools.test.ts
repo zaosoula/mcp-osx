@@ -2,9 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { createServer } from '../src/server.js';
 import { WorkflowStore } from '../src/workflows.js';
 import type { Runner } from '../src/osascript.js';
@@ -21,7 +19,7 @@ async function connect(opts: { elicit?: (approve: boolean) => void; mode?: 'full
   const [a, b] = InMemoryTransport.createLinkedPair();
   client = new Client({ name: 't', version: '0' }, { capabilities: opts.elicit ? { elicitation: { form: {} } } : {} });
   if (opts.elicit)
-    client.setRequestHandler(ElicitRequestSchema, async () => ({ action: 'accept', content: { approve: answer } }));
+    client.setRequestHandler('elicitation/create', async () => ({ action: 'accept', content: { approve: answer } }));
   await server.connect(a);
   await client.connect(b);
   return sync;
