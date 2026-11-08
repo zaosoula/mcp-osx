@@ -5,6 +5,7 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { dataDir, loadConfig } from './config.js';
 import { runOsa } from './osascript.js';
 import { createServer } from './server.js';
+import { loadBundledSkills } from './skills.js';
 import { WorkflowStore } from './workflows.js';
 
 if (process.platform !== 'darwin') {
@@ -19,7 +20,8 @@ mkdirSync(dir, { recursive: true });
 const store = new WorkflowStore(dir);
 const mode = process.env.MCP_OSX_MODE === 'compact' ? 'compact' : 'full';
 const apps = process.env.MCP_OSX_APPS?.split(',').map((s) => s.trim()).filter(Boolean);
-const options = { runner: runOsa, store, config: loadConfig, version, mode, apps: apps?.length ? apps : undefined } as const;
+const skills = await loadBundledSkills();
+const options = { runner: runOsa, store, config: loadConfig, version, mode, apps: apps?.length ? apps : undefined, skills } as const;
 
 // Fail fast on a bad MCP_OSX_APPS value rather than on the first connection.
 try {

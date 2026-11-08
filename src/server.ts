@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { actionGroups, selectActions } from './actions/index.js';
 import type { Action } from './actions/types.js';
 import { searchActions } from './search.js';
+import { outputSchemaFor, parseRecords } from './structured.js';
 import type { Config } from './config.js';
+import type { SkillsExtension } from '@modelcontextprotocol/server/ext/skills';
 import { createApproval } from './approval.js';
 import { nativeDialog, type Dialog } from './confirm.js';
 import { getAppDictionary, listScriptableApps } from './dictionary.js';
@@ -22,6 +24,8 @@ export type ServerDeps = {
   mode?: 'full' | 'compact';
   /** Limit named actions to these app groups (see actionGroups). */
   apps?: string[];
+  /** Skills (MCP skills extension) to publish, e.g. loadBundledSkills(). */
+  skills?: SkillsExtension;
 };
 
 const ok = (text: string): CallToolResult => ({ content: [{ type: 'text', text: text === '' ? '(no output)' : text }] });
@@ -82,14 +86,21 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
   const runNamed = async (a: Action, input: Record<string, unknown>): Promise<CallToolResult> => {
     const built = a.build(input, { config: await deps.config() });
     const r = await exec(built.script, built.lang, built.args, built.timeoutMs);
-    return r.ok ? ok(r.out) : fail(r.out);
+    if (!r.ok) return fail(r.out);
+    if (!a.output) return ok(r.out);
+    return { ...ok(r.out), structuredContent: parseRecords(r.out, a.output.columns) };
   };
 
   if ((deps.mode ?? 'full') === 'full') {
     for (const a of selected) {
       server.registerTool(
         a.name,
-        { description: a.description, inputSchema: z.object(a.schema), annotations: { destructiveHint: false, openWorldHint: false } },
+        {
+          description: a.description,
+          inputSchema: z.object(a.schema),
+          ...(a.output ? { outputSchema: outputSchemaFor(a.output.columns) } : {}),
+          annotations: { destructiveHint: false, openWorldHint: false },
+        },
         guard(async (input: Record<string, unknown>) => runNamed(a, input)),
       );
     }
@@ -111,7 +122,18 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
           return ok(groups.map((g) => `${g}: ${actionGroups[g].map((a) => a.name).join(', ')}`).join('\n'));
         const hits = searchActions(selected, query, limit ?? 5);
         if (!hits.length) return ok('No matching action. Try other words, search_actions with an empty query, or get_app_dictionary + run_applescript.');
-        return ok(JSON.stringify(hits.map((a) => ({ name: a.name, description: a.description, inputSchema: z.toJSONSchema(z.object(a.schema)) })), null, 1));
+        return ok(
+          JSON.stringify(
+            hits.map((a) => ({
+              name: a.name,
+              description: a.description,
+              inputSchema: z.toJSONSchema(z.object(a.schema)),
+              ...(a.output ? { outputSchema: z.toJSONSchema(outputSchemaFor(a.output.columns)) } : {}),
+            })),
+            null,
+            1,
+          ),
+        );
       }),
     );
     server.registerTool(
@@ -273,6 +295,8 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
       }
       for (const [name, { tool }] of registered) if (!seen.has(name)) (tool.remove(), registered.delete(name));
     }).catch(() => {}));
+
+  deps.skills?.attach(server);
 
   return { server, sync };
 }
