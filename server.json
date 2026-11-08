@@ -3,35 +3,18 @@
   "name": "io.github.zaosoula/mcp-osx",
   "title": "macOS (osascript)",
   "description": "Control macOS from AI agents: safe named actions for 19 apps, user-approved AppleScript/JXA, reusable workflows.",
-  "repository": {
-    "url": "https://github.com/zaosoula/mcp-osx",
-    "source": "github"
-  },
-  "version": "0.1.1",
+  "repository": { "url": "https://github.com/zaosoula/mcp-osx", "source": "github" },
+  "version": "0.1.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mcp-osx",
-      "version": "0.1.1",
-      "transport": {
-        "type": "stdio"
-      },
+      "version": "0.1.0",
+      "transport": { "type": "stdio" },
       "environmentVariables": [
-        {
-          "name": "MCP_OSX_MODE",
-          "description": "full (default) or compact (search_actions + run_action, ~1.2k tokens)",
-          "isRequired": false
-        },
-        {
-          "name": "MCP_OSX_APPS",
-          "description": "Comma-separated app groups to expose, e.g. system,safari,spotify",
-          "isRequired": false
-        },
-        {
-          "name": "MCP_OSX_HOME",
-          "description": "Data directory for config and workflows (default ~/.mcp-osx)",
-          "isRequired": false
-        }
+        { "name": "MCP_OSX_MODE", "description": "full (default) or compact (search_actions + run_action, ~1.2k tokens)", "isRequired": false },
+        { "name": "MCP_OSX_APPS", "description": "Comma-separated app groups to expose, e.g. system,safari,spotify", "isRequired": false },
+        { "name": "MCP_OSX_HOME", "description": "Data directory for config and workflows (default ~/.mcp-osx)", "isRequired": false }
       ]
     }
   ]
