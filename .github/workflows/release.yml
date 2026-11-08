@@ -56,11 +56,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # no `npm ci`: the package is macOS-only ("os": ["darwin"]) and this job only needs changelogen
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
       - name: Bump version, changelog, tag
         id: bump
         run: |
@@ -84,7 +83,7 @@ jobs:
           fi
 
           if [[ "$RELEASE" == true ]]; then
-            npx changelogen --release $BUMP --no-github
+            npx -y changelogen@0.6.2 --release $BUMP --no-github
             NEW=$(node -p "require('./package.json').version")
             # keep the MCP Registry metadata on the same version, in the release commit
             node scripts/sync-server-json.mjs
@@ -173,8 +172,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npx changelogen gh release
+      - run: npx -y changelogen@0.6.2 gh release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
