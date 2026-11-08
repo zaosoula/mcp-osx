@@ -501,6 +501,8 @@ npm run docs      # regenerate the tool reference above
 npm run build
 ```
 
+**Releasing:** releases are automatic. On every push to `main`, `.github/workflows/release.yml` tests on macOS (Node 20, 22 and 24). If [conventional commits](https://www.conventionalcommits.org) of type `feat`, `fix` or `perf` landed since the last tag, it then bumps the version with [changelogen](https://github.com/unjs/changelogen), updates `CHANGELOG.md` and `server.json`, and tags the release. It builds and smoke-tests the package once and publishes that exact artifact to npm through Trusted Publishing (OIDC, with provenance) and to the MCP Registry, then creates the GitHub release. You can also run it manually with a forced `patch`, `minor` or `major` bump. Publishing from a local machine is blocked.
+
 **Adding an app:** create `src/actions/<group>.ts`, prefix every action with `<group>_`, register it in `actionGroups` (`src/actions/index.ts`), and run `npm test && npm run docs`. The tests reject scripts that insert inputs into the script text, use destructive commands, or don't compile.
 
 ## License

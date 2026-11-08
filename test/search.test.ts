@@ -59,3 +59,14 @@ describe('README', () => {
     expect(missing).toEqual([]);
   });
 });
+
+describe('release metadata', () => {
+  it('server.json version matches package.json (scripts/sync-server-json.mjs)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    const server = JSON.parse(readFileSync(new URL('../server.json', import.meta.url), 'utf8'));
+    expect(server.version).toBe(pkg.version);
+    expect(server.packages.map((p: any) => p.version)).toEqual([pkg.version]);
+    expect(server.name).toBe(pkg.mcpName);
+  });
+});

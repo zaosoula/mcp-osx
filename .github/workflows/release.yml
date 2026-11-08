@@ -1,0 +1,180 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump (auto = from conventional commits)'
+        required: true
+        default: auto
+        type: choice
+        options: [auto, patch, minor, major]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    # osascript / osacompile tests need macOS
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+        env:
+          CI: 'true'
+      - run: npm run test:dist
+      - name: README tool reference is up to date
+        run: node scripts/gen-tools-doc.mjs && git diff --exit-code README.md
+
+  version:
+    needs: test
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      released: ${{ steps.bump.outputs.released }}
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Bump version, changelog, tag
+        id: bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+
+          OLD=$(node -p "require('./package.json').version")
+          BUMP=""
+          if [[ "${{ github.event.inputs.bump }}" != "" && "${{ github.event.inputs.bump }}" != "auto" ]]; then
+            BUMP="--${{ github.event.inputs.bump }}"
+          fi
+
+          RELEASE=true
+          if [[ -z "$BUMP" ]]; then
+            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [[ -n "$LAST_TAG" ]] && ! git log "$LAST_TAG"..HEAD --pretty=format:%s | grep -Eq '^(feat|fix|perf)(\(.+\))?!?:'; then
+              echo "No feat/fix/perf commits since $LAST_TAG: nothing to release."
+              RELEASE=false
+            fi
+          fi
+
+          if [[ "$RELEASE" == true ]]; then
+            npx changelogen --release $BUMP --no-github
+            NEW=$(node -p "require('./package.json').version")
+            # keep the MCP Registry metadata on the same version, in the release commit
+            node scripts/sync-server-json.mjs
+            git add server.json
+            git commit --amend --no-edit
+            git tag -f "v$NEW"
+            git push origin HEAD:main --follow-tags
+          else
+            NEW=$OLD
+          fi
+
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          if [[ "$OLD" != "$NEW" ]]; then echo "released=true" >> "$GITHUB_OUTPUT"; else echo "released=false" >> "$GITHUB_OUTPUT"; fi
+
+  build:
+    needs: version
+    if: needs.version.outputs.released == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.version.outputs.version }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: |
+            dist
+            skills
+            package.json
+            README.md
+            LICENSE
+            CHANGELOG.md
+            server.json
+
+  publish-npm:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write # npm Trusted Publishing (OIDC) + provenance
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: package
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm (the exact artifact that was built and smoke-tested)
+        run: npm publish --provenance --access public --ignore-scripts
+
+  publish-mcp-registry:
+    needs: [version, publish-npm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # MCP Registry GitHub OIDC login
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: package
+      - name: Publish to the MCP Registry
+        run: |
+          curl -fsSL https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
+
+  github-release:
+    needs: [version, publish-npm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: v${{ needs.version.outputs.version }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx changelogen gh release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
