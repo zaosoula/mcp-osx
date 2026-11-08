@@ -76,6 +76,10 @@ jobs:
           RELEASE=true
           if [[ -z "$BUMP" ]]; then
             LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [[ -z "$LAST_TAG" ]]; then
+              echo "::error::No release tag found. Refusing to guess the first release; tag it (annotated) first."
+              exit 1
+            fi
             if [[ -n "$LAST_TAG" ]] && ! git log "$LAST_TAG"..HEAD --pretty=format:%s | grep -Eq '^(feat|fix|perf)(\(.+\))?!?:'; then
               echo "No feat/fix/perf commits since $LAST_TAG: nothing to release."
               RELEASE=false
@@ -89,8 +93,9 @@ jobs:
             node scripts/sync-server-json.mjs
             git add server.json
             git commit --amend --no-edit
-            git tag -f "v$NEW"
-            git push origin HEAD:main --follow-tags
+            # annotated tag on the amended commit, pushed explicitly (--follow-tags skips lightweight tags)
+            git tag -fa "v$NEW" -m "v$NEW"
+            git push origin HEAD:main "refs/tags/v$NEW"
           else
             NEW=$OLD
           fi
