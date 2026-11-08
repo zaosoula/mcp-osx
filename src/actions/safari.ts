@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type Action, as, noArgs, bool } from './types.js';
+import { CL } from './helpers.js';
 
 /** Safari. */
 export const safariActions: Action[] = [
@@ -27,19 +28,26 @@ export const safariActions: Action[] = [
   },
   {
     name: 'safari_current_tab',
-    description: 'Return the URL and title of the current Safari tab.',
+    description: 'Return the current Safari tab. Returns tab-separated: url, title.',
     schema: {},
+    output: { columns: ['url', 'title'] },
     build: noArgs(as([
+      ...CL,
+      'if not (application "Safari" is running) then return "Safari is not running"',
+      'set TB to character id 9',
       'tell application "Safari"',
       '  if (count of windows) = 0 then return "no Safari window open"',
-      '  tell current tab of front window to return (URL as text) & linefeed & (name as text)',
+      '  set t to current tab of front window',
+      '  set u to URL of t',
+      '  return my cl(u) & TB & my cl(name of t)',
       'end tell',
     ])),
   },
   {
     name: 'safari_list_tabs',
-    description: 'List open Safari tabs, one per line: window index, tab index, "*" if current tab, title, URL (cut at 300 chars).',
+    description: 'List open Safari tabs, one per line. Returns tab-separated: window, tab (indexes), current ("*" if current tab, else empty), title, url (cut at 300 chars).',
     schema: { limit: z.number().int().min(1).max(500).optional().describe('max tabs to return (default 100)') },
+    output: { columns: ['window', 'tab', 'current', 'title', 'url'] },
     build: ({ limit }) => ({
       script: as([
         'on run argv',
@@ -68,10 +76,9 @@ export const safariActions: Action[] = [
         '        else',
         '          set m to ""',
         '        end if',
-        '        set u to URL of t',
-        '        if u is missing value then set u to ""',
+        '        set u to my cl(URL of t)',
         '        if (count of u) > 300 then set u to (text 1 thru 300 of u) & "…"',
-        '        set end of out to (wi as text) & TB & (ti as text) & TB & m & TB & (name of t) & TB & u',
+        '        set end of out to (wi as text) & TB & (ti as text) & TB & m & TB & my cl(name of t) & TB & u',
         '        set n to n + 1',
         '      end if',
         '    end repeat',
@@ -81,6 +88,7 @@ export const safariActions: Action[] = [
         'set AppleScript\'s text item delimiters to linefeed',
         'return out as text',
         'end run',
+        ...CL,
       ]),
       args: [String(limit ?? 100)],
     }),

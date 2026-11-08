@@ -186,15 +186,16 @@ const emails = z.array(z.email()).max(50);
 export const mailActions: Action[] = [
   {
     name: 'mail_list_accounts',
-    description: 'List Mail accounts: name, type, enabled, email addresses (requires Mail running).',
+    description: 'List Mail accounts, one per line (requires Mail running). Returns tab-separated: name, type, enabled (true/false), email_addresses (comma-separated).',
     schema: {},
+    output: { columns: ['name', 'type', 'enabled', 'email_addresses'] },
     build: noArgs(as([
       ...AS_HELPERS,
       NOT_RUNNING,
       'set out to {}',
       'tell application id "com.apple.mail"',
       '  repeat with a in every account',
-      '    set end of out to my cl(name of a) & tab & ((account type of a) as text) & tab & ((enabled of a) as text) & tab & my joinL(email addresses of a, ", ")',
+      '    set end of out to my cl(name of a) & tab & ((account type of a) as text) & tab & ((enabled of a) as text) & tab & my cl(my joinL(email addresses of a, ", "))',
       '  end repeat',
       'end tell',
       'if (count of out) = 0 then return "no accounts"',
@@ -209,7 +210,8 @@ export const mailActions: Action[] = [
   },
   {
     name: 'mail_list_messages',
-    description: 'List recent messages in a mailbox (default inbox): date, sender, subject, read/unread, id (requires Mail running).',
+    description: 'List recent messages in a mailbox (default inbox), one per line (requires Mail running). Returns tab-separated: date (YYYY-MM-DD HH:MM), sender, subject, read_status (read/unread), id (for mail_read_message).',
+    output: { columns: ['date', 'sender', 'subject', 'read_status', 'id'] },
     schema: {
       mailbox: z.string().optional().describe('Mailbox name (default "inbox": unified inbox, or the account\'s INBOX)'),
       account: z.string().optional().describe('Account name'),

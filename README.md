@@ -65,6 +65,19 @@ Some actions are deliberately missing. Anything that sends (Mail, Messages), del
 
 To add an app, create `src/actions/<group>.ts`, prefix every action name with `<group>_`, and register the file in `actionGroups` in `src/actions/index.ts`.
 
+## Typed results
+
+List and "current item" actions such as tabs, events, reminders, notes, messages, playlists and now-playing declare an `outputSchema`. They return `structuredContent` as `{ items: [...], notes: [...] }` alongside the text, so agents and code can read fields directly. `notes` holds status lines like "(12 more not shown)" or "Safari is not running".
+
+## Skills
+
+The server publishes [MCP skills](https://ts.sdk.modelcontextprotocol.io/v2/), loaded by the client only when needed:
+
+- **`applescript-authoring`**: how to script an app that has no named action. It covers reading the dictionary, passing inputs through argv, getting approval and saving a workflow, plus a reference of common AppleScript errors and their fixes.
+- **`macos-routines`**: ready-made sequences of named actions: focus mode, presentation mode, start of the workday, end of day, and "what's on my plate".
+
+Skills live in `skills/<name>/SKILL.md`.
+
 ## Context size: full vs compact mode
 
 Every MCP tool definition counts against the agent's context.
@@ -109,10 +122,10 @@ Add a `tool_search_tool_bm25_20251119` tool to the same request. Tool names are 
 
 Every `run_applescript` call, every deletion of a workflow, and every run of a workflow whose file changed must be approved:
 
-1. If your MCP client supports **elicitation** (protocol 2025-era), the script is shown in the chat and you approve it there.
-2. Otherwise, a **native macOS dialog** shows the full script in a scrollable view. **Deny** is the default button, and the dialog denies automatically after 120 seconds.
+1. **In the chat**, if your client supports elicitation. The tool replies with an MCP `input_required` result, the client shows the full script, and it calls the tool again with your answer. The server signs the round-trip state (HMAC) and ties it to a hash of exactly what you were shown, so an approval can't be reused for a different script. This works with both 2025-era and 2026-07-28 clients.
+2. **In a native macOS dialog** otherwise. The dialog shows the full script in a scrollable view. **Deny** is the default button, and the dialog denies automatically after 120 seconds.
 
-Anything other than an explicit approval, such as an error, timeout, or closed dialog, counts as **deny**.
+Anything other than an explicit approval, such as an error, timeout, closed dialog or invalid state, counts as **deny**.
 
 ## Workflows
 
@@ -153,7 +166,7 @@ Scripts that click UI elements through System Events also need **Accessibility**
 
 ## Development
 
-Built on the MCP TypeScript SDK v2 (`@modelcontextprotocol/server`). `serveStdio` serves both 2025-era and 2026-07-28 clients. Clients on the 2026-07-28 protocol get the native dialog for confirmations, because push-style elicitation isn't available there yet.
+Built on the MCP TypeScript SDK v2 (`@modelcontextprotocol/server`). `serveStdio` serves both 2025-era and 2026-07-28 clients.
 
 
 ```bash

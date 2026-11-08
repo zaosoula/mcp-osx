@@ -4,7 +4,7 @@ import { type Action, as, noArgs } from './types.js';
 /** Calendar. Read events, create events (never with attendees), navigate the UI. */
 
 
-import { AS_HELPERS, dateArgs, isoDate, isoDateParts } from './helpers.js';
+import { AS_HELPERS, CL, dateArgs, isoDate, isoDateParts } from './helpers.js';
 
 const limit = (def: number) => z.number().int().min(1).max(200).optional().describe(`Max items (default ${def}, max 200)`);
 
@@ -79,7 +79,7 @@ const CREATE_EVENT = as([
   '  if loc is not "" then set props to props & {location:loc}',
   '  if nts is not "" then set props to props & {description:nts}',
   '  set e to make new event at end of events of c with properties props',
-  '  return "created " & my cl(summary of e) & tab & my fmt(start date of e) & tab & my fmt(end date of e) & tab & my cl(name of c)',
+  '  return my cl(summary of e) & tab & my fmt(start date of e) & tab & my fmt(end date of e) & tab & my cl(name of c)',
   'end tell',
   'end run',
 ]);
@@ -107,16 +107,18 @@ const SHOW_DATE = as([
 export const calendarActions: Action[] = [
   {
     name: 'calendar_list_calendars',
-    description: 'List Calendar calendars: name and writable flag, one per line.',
+    description: 'List Calendar calendars, one per line. Returns tab-separated: name, writable (true/false).',
     schema: {},
+    output: { columns: ['name', 'writable'] },
     build: noArgs(as([
+      ...CL,
       'tell application "Calendar"',
       '  set ns to name of every calendar',
       '  set ws to writable of every calendar',
       'end tell',
       'set out to {}',
       'repeat with i from 1 to count of ns',
-      '  set end of out to (item i of ns) & tab & (item i of ws as text)',
+      '  set end of out to my cl(item i of ns) & tab & (item i of ws as text)',
       'end repeat',
       'set AppleScript\'s text item delimiters to linefeed',
       'return out as text',
@@ -124,7 +126,8 @@ export const calendarActions: Action[] = [
   },
   {
     name: 'calendar_list_events',
-    description: 'List Calendar events starting in a range (default today to 7 days ahead), sorted: start, end, summary, location, calendar. Recurring events show only their first occurrence.',
+    description: 'List Calendar events starting in a range (default today to 7 days ahead), sorted by start. Returns tab-separated: start, end (YYYY-MM-DD HH:MM), summary, location, calendar. Recurring events show only their first occurrence.',
+    output: { columns: ['start', 'end', 'summary', 'location', 'calendar'] },
     schema: {
       from: isoDate.optional(),
       to: isoDate.optional(),
@@ -141,7 +144,8 @@ export const calendarActions: Action[] = [
   },
   {
     name: 'calendar_create_event',
-    description: 'Create a Calendar event (no attendees, no invitations sent) and return its summary, start, end and calendar. Example: {"title":"Dentist","start":"2026-11-12T14:30","end":"2026-11-12T15:15","calendar":"Personnel","location":"12 rue X"}',
+    description: 'Create a Calendar event (no attendees, no invitations sent). Returns tab-separated: summary, start, end, calendar. Example: {"title":"Dentist","start":"2026-11-12T14:30","end":"2026-11-12T15:15","calendar":"Personnel","location":"12 rue X"}',
+    output: { columns: ['summary', 'start', 'end', 'calendar'] },
     schema: {
       title: z.string().min(1),
       start: isoDate,

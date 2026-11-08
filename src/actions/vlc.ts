@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type Action, as, noArgs } from './types.js';
+import { CL } from './helpers.js';
 
 /** VLC. */
 const NOT_RUNNING = 'if application "VLC" is not running then return "VLC is not running"';
@@ -49,24 +50,32 @@ export const vlcActions: Action[] = [
   },
   {
     name: 'vlc_now_playing',
-    description: 'Return the current VLC item: name, current time/duration in seconds, and whether it is playing.',
+    description: 'Return the current VLC item. Returns tab-separated: name, position_s, duration_s (seconds), playing (true/false).',
     schema: {},
+    output: { columns: ['name', 'position_s', 'duration_s', 'playing'] },
     build: noArgs(as([
+      ...CL,
       NOT_RUNNING,
       'tell application "VLC"',
       '  set p to playing',
+      '  set n to missing value',
       '  try',
       '    set n to name of current item',
-      '  on error',
-      '    return "nothing loaded" & tab & "playing " & (p as text)',
       '  end try',
+      // `name of current item` yields no value at all when nothing is loaded, leaving n undefined
+      '  try',
+      '    n',
+      '  on error',
+      '    set n to missing value',
+      '  end try',
+      '  if n is missing value or n is "" then return "nothing loaded" & tab & "playing " & (p as text)',
       '  set ct to 0',
       '  set d to 0',
       '  try',
       '    set ct to current time',
       '    set d to duration of current item',
       '  end try',
-      '  return n & tab & (ct as text) & "/" & (d as text) & "s" & tab & "playing " & (p as text)',
+      '  return my cl(n) & tab & (ct as text) & tab & (d as text) & tab & (p as text)',
       'end tell',
     ])),
   },

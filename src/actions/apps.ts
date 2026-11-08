@@ -28,8 +28,9 @@ export const appActions: Action[] = [
   },
   {
     name: 'app_list_running',
-    description: 'List visible running applications.',
+    description: 'List visible running applications, one name per line. Returns: name.',
     schema: {},
+    output: { columns: ['name'] },
     build: noArgs(as([
       'tell application "System Events" to set n to name of every application process whose background only is false',
       'set AppleScript\'s text item delimiters to linefeed',

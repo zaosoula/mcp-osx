@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { type Action, as, noArgs } from './types.js';
-import { AS_HELPERS } from './helpers.js';
+import { AS_HELPERS, CL } from './helpers.js';
 
 /** Notes. List, read and create notes. No delete, no move. */
 
@@ -92,15 +92,17 @@ const CREATE = as([
 export const notesActions: Action[] = [
   {
     name: 'notes_list_folders',
-    description: 'List Notes folders: account, folder name and note count, one per line.',
+    description: 'List Notes folders, one per line. Returns tab-separated: account, folder, note_count.',
     schema: {},
+    output: { columns: ['account', 'folder', 'note_count'] },
     build: noArgs(as([
+      ...CL,
       'set out to {}',
       'tell application "Notes"',
       '  repeat with a in every account',
-      '    set an to name of a',
+      '    set an to my cl(name of a)',
       '    repeat with f in every folder of a',
-      '      set end of out to an & tab & (name of f) & tab & ((count of notes of f) as text)',
+      '      set end of out to an & tab & my cl(name of f) & tab & ((count of notes of f) as text)',
       '    end repeat',
       '  end repeat',
       'end tell',
@@ -110,7 +112,8 @@ export const notesActions: Action[] = [
   },
   {
     name: 'notes_list',
-    description: 'List notes (optionally in one folder): name and modification date, one per line.',
+    description: 'List notes (optionally in one folder), one per line. Returns tab-separated: name, modified (YYYY-MM-DD HH:MM).',
+    output: { columns: ['name', 'modified'] },
     schema: {
       folder: z.string().optional().describe('Folder name (default: all folders)'),
       limit: z.number().int().min(1).max(200).optional().describe('Max items (default 20, max 200)'),

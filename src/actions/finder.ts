@@ -2,6 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import { type Action, as, noArgs } from './types.js';
+import { CL } from './helpers.js';
 
 /** Finder: reveal, open folders, read selection and folder listings. Nothing that moves, deletes or ejects. */
 const fsPath = z
@@ -101,8 +102,9 @@ export const finderActions: Action[] = [
   },
   {
     name: 'finder_list_folder',
-    description: 'List visible items in a folder: name<TAB>folder|package|file per line (default 50, max 200). Read-only.',
+    description: 'List visible items in a folder, one per line (default 50, max 200). Read-only. Returns tab-separated: name, kind (folder/package/file).',
     schema: { path: fsPath, limit: z.number().int().min(1).max(200).optional().describe('Max items (default 50)') },
+    output: { columns: ['name', 'kind'] },
     build: ({ path: p, limit }) => ({
       script: as([
         'on run argv',
@@ -131,7 +133,7 @@ export const finderActions: Action[] = [
         '      else',
         '        set k to "file"',
         '      end if',
-        '      set end of out to (item i of ns) & tab & k',
+        '      set end of out to my cl(item i of ns) & tab & k',
         '      set shown to shown + 1',
         '    end if',
         '  end if',
@@ -142,6 +144,7 @@ export const finderActions: Action[] = [
         'set AppleScript\'s text item delimiters to linefeed',
         'return out as text',
         'end run',
+        ...CL,
       ]),
       args: [expand(p), String(limit ?? 50)],
     }),

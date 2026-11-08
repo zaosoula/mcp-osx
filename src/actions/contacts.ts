@@ -31,7 +31,8 @@ const SEARCH = as([
 export const contactsActions: Action[] = [
   {
     name: 'contacts_search',
-    description: 'Search Contacts by name or organization (read-only): name, emails, phones, organization, one per line.',
+    description: 'Search Contacts by name or organization (read-only), one per line. Returns tab-separated: name, emails, phones (comma-separated), organization.',
+    output: { columns: ['name', 'emails', 'phones', 'organization'] },
     schema: {
       query: z.string().min(1).describe('Text contained in the name or organization'),
       limit: z.number().int().min(1).max(200).optional().describe('Max results (default 20, max 200)'),

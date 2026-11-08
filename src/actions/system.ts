@@ -27,9 +27,10 @@ export const systemActions: Action[] = [
   },
   {
     name: 'system_get_volume',
-    description: 'Return output volume (0-100) and mute state.',
+    description: 'Return the output volume and mute state. Returns tab-separated: volume (0-100), muted (true/false).',
     schema: {},
-    build: noArgs('set s to get volume settings\nreturn "volume " & (output volume of s) & ", muted " & (output muted of s)'),
+    output: { columns: ['volume', 'muted'] },
+    build: noArgs('set s to get volume settings\nreturn ((output volume of s) as text) & tab & ((output muted of s) as text)'),
   },
   {
     name: 'system_set_volume',
@@ -144,8 +145,9 @@ export const systemActions: Action[] = [
   },
   {
     name: 'system_info',
-    description: 'Return computer name, macOS version, user, CPU, memory and uptime.',
+    description: 'Return computer name, macOS version, user, CPU, memory and uptime. Returns tab-separated key, value lines (keys: computer, macos, user, cpu, memory_mb, uptime).',
     schema: {},
+    output: { columns: ['key', 'value'] },
     build: noArgs(as([
       'set s to system info',
       'set upt to do shell script "uptime"',

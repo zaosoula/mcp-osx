@@ -26,6 +26,20 @@ export function isoDateParts(s: string, endOfDay = false): Date {
 /** A Date as five argv strings (year, month, day, hour, minute in local time), read by the `mkd` handler. */
 export const dateArgs = (d: Date) => [d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes()].map(String);
 
+/** AppleScript handler cl(t): text on one line, with tab, linefeed and return replaced by spaces (safe as a tab-separated field). */
+export const CL = [
+  'on cl(t)',
+  '  if t is missing value then return ""',
+  '  set t to t as text',
+  '  set AppleScript\'s text item delimiters to {tab, linefeed, return}',
+  '  set p to text items of t',
+  '  set AppleScript\'s text item delimiters to " "',
+  '  set t to p as text',
+  '  set AppleScript\'s text item delimiters to ""',
+  '  return t',
+  'end cl',
+];
+
 /** Shared AppleScript handlers: mkd (date from argv parts), fmt (date to "YYYY-MM-DD HH:MM"), cl (one-line text), joinL. */
 export const AS_HELPERS = [
   'on mkd(a, i)',
@@ -44,16 +58,7 @@ export const AS_HELPERS = [
   '  if d is missing value then return ""',
   '  return ((year of d) as text) & "-" & my p2(month of d as integer) & "-" & my p2(day of d) & " " & my p2(hours of d) & ":" & my p2(minutes of d)',
   'end fmt',
-  'on cl(t)',
-  '  if t is missing value then return ""',
-  '  set t to t as text',
-  '  set AppleScript\'s text item delimiters to {tab, linefeed, return}',
-  '  set p to text items of t',
-  '  set AppleScript\'s text item delimiters to " "',
-  '  set t to p as text',
-  '  set AppleScript\'s text item delimiters to ""',
-  '  return t',
-  'end cl',
+  ...CL,
   'on joinL(l, s)',
   '  set AppleScript\'s text item delimiters to s',
   '  set t to l as text',

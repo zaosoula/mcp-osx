@@ -45,8 +45,9 @@ export const settingsActions: Action[] = [
   },
   {
     name: 'settings_list_panes',
-    description: 'List the pane names accepted by settings_open_pane, one per line.',
+    description: 'List the pane names accepted by settings_open_pane, one per line. Returns: pane.',
     schema: {},
+    output: { columns: ['pane'] },
     // Constant script returning a constant list; no input.
     build: noArgs(`return "${paneNames.join('\\n')}"`),
   },

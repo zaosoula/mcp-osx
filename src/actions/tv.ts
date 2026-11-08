@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type Action, as, noArgs } from './types.js';
+import { CL } from './helpers.js';
 
 /** TV.app. */
 const NOT_RUNNING = 'if application "TV" is not running then return "TV is not running"';
@@ -39,9 +40,11 @@ export const tvActions: Action[] = [
   },
   {
     name: 'tv_current',
-    description: 'Return what the TV app is playing (name, show, position/duration in seconds) and player state.',
+    description: 'Return what the TV app is playing. Returns tab-separated: name, show (empty for movies), position_s, duration_s (whole seconds), state; "stopped" when nothing plays.',
     schema: {},
+    output: { columns: ['name', 'show', 'position_s', 'duration_s', 'state'] },
     build: noArgs(as([
+      ...CL,
       NOT_RUNNING,
       'tell application "TV"',
       '  set pstate to player state as text',
@@ -59,7 +62,11 @@ export const tvActions: Action[] = [
       '  try',
       '    set pos to round (player position) rounding down',
       '  end try',
-      '  return (name of t) & tab & sh & tab & (pos as text) & "/" & ((round (duration of t) rounding down) as text) & "s" & tab & pstate',
+      '  set dur to 0',
+      '  try',
+      '    set dur to round (duration of t) rounding down',
+      '  end try',
+      '  return my cl(name of t) & tab & my cl(sh) & tab & (pos as text) & tab & (dur as text) & tab & pstate',
       'end tell',
     ])),
   },

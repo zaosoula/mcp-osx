@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type Action, as, noArgs } from './types.js';
+import { CL } from './helpers.js';
 
 /** Spotify. */
 const spotifyUri = z
@@ -12,7 +13,7 @@ const PLAY_URI = as(['on run argv', 'tell application "Spotify" to play track (i
 export const spotifyActions: Action[] = [
   {
     name: 'spotify_control',
-    description: 'Control Spotify playback: play, pause, playpause, next, previous.',
+    description: 'Control Spotify playback: play, pause or resume the song, skip to the next or previous track.',
     schema: { command: z.enum(['play', 'pause', 'playpause', 'next', 'previous']) },
     build: ({ command }) => ({
       script: as([
@@ -39,13 +40,16 @@ export const spotifyActions: Action[] = [
   },
   {
     name: 'spotify_current_track',
-    description: 'Return the current Spotify track, artist, album and player state.',
+    description: 'Return the current Spotify track. Returns tab-separated: name, artist, album, state (playing/paused), url (spotify: URI); "stopped" when nothing plays.',
     schema: {},
+    output: { columns: ['name', 'artist', 'album', 'state', 'url'] },
     build: noArgs(as([
+      ...CL,
+      'if application "Spotify" is not running then return "Spotify is not running"',
       'tell application "Spotify"',
       '  if player state is stopped then return "stopped"',
       '  set t to current track',
-      '  return (name of t) & " — " & (artist of t) & " (" & (album of t) & ") [" & (player state as text) & "] " & (spotify url of t)',
+      '  return my cl(name of t) & tab & my cl(artist of t) & tab & my cl(album of t) & tab & (player state as text) & tab & my cl(spotify url of t)',
       'end tell',
     ])),
   },

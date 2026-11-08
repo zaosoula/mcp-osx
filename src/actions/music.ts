@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type Action, as, noArgs, bool } from './types.js';
+import { CL } from './helpers.js';
 
 /** Music.app. */
 const NOT_RUNNING = 'if application "Music" is not running then return "Music is not running"';
@@ -7,7 +8,7 @@ const NOT_RUNNING = 'if application "Music" is not running then return "Music is
 export const musicActions: Action[] = [
   {
     name: 'music_control',
-    description: 'Control Music playback (play, pause, playpause, next, previous, stop); returns the player state. play/playpause may launch Music.',
+    description: 'Control Apple Music playback: play, pause or resume the song, skip to the next or previous track, stop; returns the player state. play/playpause may launch Music.',
     schema: { command: z.enum(['play', 'pause', 'playpause', 'next', 'previous', 'stop']) },
     build: ({ command }) => ({
       script: as([
@@ -39,9 +40,11 @@ export const musicActions: Action[] = [
   },
   {
     name: 'music_current_track',
-    description: 'Return the current Music track (name, artist, album, position/duration in seconds) and player state.',
+    description: 'Return the current Music track. Returns tab-separated: name, artist, album, position_s, duration_s (whole seconds), state (playing/paused/…); "stopped" when nothing plays.',
     schema: {},
+    output: { columns: ['name', 'artist', 'album', 'position_s', 'duration_s', 'state'] },
     build: noArgs(as([
+      ...CL,
       NOT_RUNNING,
       'tell application "Music"',
       '  set pstate to player state as text',
@@ -55,14 +58,19 @@ export const musicActions: Action[] = [
       '  try',
       '    set pos to round (player position) rounding down',
       '  end try',
-      '  return (name of t) & tab & (artist of t) & tab & (album of t) & tab & (pos as text) & "/" & ((round (duration of t) rounding down) as text) & "s" & tab & pstate',
+      '  set dur to 0',
+      '  try',
+      '    set dur to round (duration of t) rounding down',
+      '  end try',
+      '  return my cl(name of t) & tab & my cl(artist of t) & tab & my cl(album of t) & tab & (pos as text) & tab & (dur as text) & tab & pstate',
       'end tell',
     ])),
   },
   {
     name: 'music_list_playlists',
-    description: 'List Music playlists, one per line: name and track count (default 20, max 200).',
+    description: 'List Music playlists, one per line (default 20, max 200). Returns tab-separated: name, track_count.',
     schema: { limit: z.number().int().min(1).max(200).optional().describe('Max playlists to return (default 20)') },
+    output: { columns: ['name', 'track_count'] },
     build: ({ limit }) => ({
       script: as([
         'on run argv',
@@ -75,13 +83,14 @@ export const musicActions: Action[] = [
         '  repeat with i from 1 to n',
         '    if i > lim then exit repeat',
         '    set p to item i of ps',
-        '    set end of out to (name of p) & tab & ((count of tracks of p) as text)',
+        '    set end of out to my cl(name of p) & tab & ((count of tracks of p) as text)',
         '  end repeat',
         'end tell',
         'if n > lim then set end of out to "(" & ((n - lim) as text) & " more not shown)"',
         "set AppleScript's text item delimiters to linefeed",
         'return out as text',
         'end run',
+        ...CL,
       ]),
       args: [String(limit ?? 20)],
     }),

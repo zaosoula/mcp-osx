@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type Action, as, noArgs } from './types.js';
+import { CL } from './helpers.js';
 
 /** Keynote. Presenting and listing only: no export, passwords or edits. */
 const NOT_RUNNING = 'if application "Keynote" is not running then return "Keynote is not running"';
@@ -35,14 +36,16 @@ export const keynoteActions: Action[] = [
   },
   {
     name: 'keynote_list_documents',
-    description: 'List open Keynote documents, one per line: name, slide count, unsaved-changes flag.',
+    description: 'List open Keynote documents, one per line. Returns tab-separated: name, slide_count, modified (true if unsaved changes).',
     schema: {},
+    output: { columns: ['name', 'slide_count', 'modified'] },
     build: noArgs(as([
+      ...CL,
       NOT_RUNNING,
       'set out to {}',
       'tell application "Keynote"',
       '  repeat with d in documents',
-      '    set end of out to (name of d) & tab & ((count of slides of d) as text) & " slides" & tab & "modified " & ((modified of d) as text)',
+      '    set end of out to my cl(name of d) & tab & ((count of slides of d) as text) & tab & ((modified of d) as text)',
       '  end repeat',
       'end tell',
       'if (count of out) = 0 then return "no Keynote documents open"',

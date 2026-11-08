@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { type Action, as, noArgs, bool } from './types.js';
-import { AS_HELPERS, dateArgs, isoDate, isoDateParts } from './helpers.js';
+import { AS_HELPERS, CL, dateArgs, isoDate, isoDateParts } from './helpers.js';
 
 /** Reminders. List, create and complete reminders. No delete. */
 
@@ -59,7 +59,7 @@ const CREATE = as([
   '  if nts is not "" then set props to props & {body:nts}',
   '  if hasDue then set props to props & {due date:my mkd(argv, 5)}',
   '  set r to make new reminder at end of reminders of l with properties props',
-  '  return "created " & my cl(name of r) & tab & my fmt(due date of r) & tab & my cl(name of l)',
+  '  return my cl(name of r) & tab & my fmt(due date of r) & tab & my cl(name of l)',
   'end tell',
   'end run',
 ]);
@@ -82,15 +82,17 @@ const COMPLETE = as([
 export const remindersActions: Action[] = [
   {
     name: 'reminders_list_lists',
-    description: 'List Reminders lists: account and list name, one per line.',
+    description: 'List Reminders lists, one per line. Returns tab-separated: account, list.',
     schema: {},
+    output: { columns: ['account', 'list'] },
     build: noArgs(as([
+      ...CL,
       'set out to {}',
       'tell application "Reminders"',
       '  repeat with a in every account',
-      '    set an to name of a',
+      '    set an to my cl(name of a)',
       '    repeat with n in (name of every list of a)',
-      '      set end of out to an & tab & n',
+      '      set end of out to an & tab & my cl(n)',
       '    end repeat',
       '  end repeat',
       'end tell',
@@ -100,7 +102,8 @@ export const remindersActions: Action[] = [
   },
   {
     name: 'reminders_list',
-    description: 'List reminders (incomplete only by default): name, due date, list, completed.',
+    description: 'List reminders (incomplete only by default), one per line. Returns tab-separated: name, due (YYYY-MM-DD HH:MM or empty), list, completed (true/false).',
+    output: { columns: ['name', 'due', 'list', 'completed'] },
     schema: {
       list: z.string().optional().describe('List name (default: all lists)'),
       includeCompleted: z.boolean().optional().describe('Include completed reminders (default false)'),
@@ -113,7 +116,8 @@ export const remindersActions: Action[] = [
   },
   {
     name: 'reminders_create',
-    description: 'Create a reminder (in the default list unless one is given) and return its name, due date and list.',
+    description: 'Create a reminder (in the default list unless one is given). Returns tab-separated: name, due, list.',
+    output: { columns: ['name', 'due', 'list'] },
     schema: {
       title: z.string().min(1),
       list: z.string().optional().describe('List name (default: the default list)'),

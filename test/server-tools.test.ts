@@ -66,6 +66,19 @@ describe('server', () => {
     expect(runner.mock.calls[0][0].timeoutMs).toBe(120_000);
   });
 
+  it('declared list actions return typed structuredContent with an outputSchema', async () => {
+    runner.mockResolvedValueOnce({ stdout: '1\t1\t*\tHome\thttps://a.com\n… 3 more tabs not shown', stderr: '', code: 0 });
+    await connect();
+    const t = (await client.listTools()).tools.find((x) => x.name === 'chromium_list_tabs')!;
+    expect((t.outputSchema as any).properties.items.items.properties.url.type).toBe('string');
+    const r: any = await client.callTool({ name: 'chromium_list_tabs', arguments: {} });
+    expect(r.structuredContent).toEqual({
+      items: [{ window: '1', tab: '1', active: '*', title: 'Home', url: 'https://a.com' }],
+      notes: ['… 3 more tabs not shown'],
+    });
+    expect(text(r)).toContain('Home');
+  });
+
   it('named action error carries hint', async () => {
     runner.mockResolvedValueOnce({ stdout: '', stderr: 'Not authorized to send Apple events to Spotify. (-1743)', code: 1 });
     await connect();

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type Action, as, bool } from './types.js';
+import { CL } from './helpers.js';
 
 /**
  * Chromium browsers (Google Chrome, Brave Browser). Both share the Chromium dictionary with identical
@@ -22,6 +23,7 @@ const script = (body: string[], opts: { requireRunning?: boolean } = {}) => as([
   '  end tell',
   'end using terms from',
   'end run',
+  ...CL,
 ]);
 
 const NO_WINDOW = 'if (count of windows) = 0 then return "no " & b & " window open"';
@@ -48,7 +50,8 @@ export const chromiumActions: Action[] = [
   },
   {
     name: 'chromium_list_tabs',
-    description: 'List open Chrome/Brave tabs, one per line: window index, tab index, "*" if active tab, title, URL (cut at 300 chars).',
+    description: 'List open Chrome/Brave tabs, one per line. Returns tab-separated: window, tab (indexes), active ("*" if active tab, else empty), title, url (cut at 300 chars).',
+    output: { columns: ['window', 'tab', 'active', 'title', 'url'] },
     schema: {
       browser,
       limit: z.number().int().min(1).max(500).optional().describe('max tabs to return (default 100)'),
@@ -73,9 +76,9 @@ export const chromiumActions: Action[] = [
         '      else',
         '        set m to ""',
         '      end if',
-        '      set u to URL of t',
+        '      set u to my cl(URL of t)',
         '      if (count of u) > 300 then set u to (text 1 thru 300 of u) & "…"',
-        '      set end of out to (wi as text) & TB & (ti as text) & TB & m & TB & (title of t) & TB & u',
+        '      set end of out to (wi as text) & TB & (ti as text) & TB & m & TB & my cl(title of t) & TB & u',
         '      set n to n + 1',
         '    end if',
         '  end repeat',
@@ -89,12 +92,14 @@ export const chromiumActions: Action[] = [
   },
   {
     name: 'chromium_current_tab',
-    description: 'Return the URL and title of the active tab in the front Chrome/Brave window.',
+    description: 'Return the active tab of the front Chrome/Brave window. Returns tab-separated: url, title.',
     schema: { browser },
+    output: { columns: ['url', 'title'] },
     build: ({ browser: b }) => ({
       script: script([
         NO_WINDOW,
-        'tell active tab of front window to return (URL as text) & linefeed & (title as text)',
+        'set t to active tab of front window',
+        'return my cl(URL of t) & TB & my cl(title of t)',
       ]),
       args: [pick(b)],
     }),
