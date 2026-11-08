@@ -3,7 +3,7 @@ const HINTS: [RegExp, string][] = [
     'macOS blocked Automation. Open System Settings › Privacy & Security › Automation and allow the host app (terminal or MCP client) to control the target app.'],
   [/-25211|-1719|assistive access|accessibility/i,
     'UI scripting needs Accessibility permission. Open System Settings › Privacy & Security › Accessibility and enable the host app (terminal or MCP client).'],
-  [/-600|isn.t running/i, 'The target application is not running. Launch it first (e.g. with open_app).'],
+  [/-600|isn.t running/i, 'The target application is not running. Launch it first (e.g. with app_open).'],
   [/-1728|Can.t get/i, 'The referenced object does not exist. Check names/indexes; use get_app_dictionary to inspect what the app exposes.'],
 ];
 

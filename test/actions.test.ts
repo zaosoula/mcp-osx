@@ -39,9 +39,9 @@ describe('actions', () => {
 
   it('covers the required minimum', () => {
     const names = actions.map((a) => a.name);
-    for (const n of ['get_dark_mode', 'set_dark_mode', 'safari_open_url', 'safari_current_tab', 'spotify_control',
-      'spotify_current_track', 'spotify_play', 'spotify_play_favorites', 'get_volume', 'set_volume', 'set_muted',
-      'wifi_status', 'set_wifi', 'open_app', 'quit_app', 'activate_app', 'list_running_apps', 'frontmost_app', 'notify'])
+    for (const n of ['system_get_dark_mode', 'system_set_dark_mode', 'safari_open_url', 'safari_current_tab', 'spotify_control',
+      'spotify_current_track', 'spotify_play', 'spotify_play_favorites', 'system_get_volume', 'system_set_volume', 'system_set_muted',
+      'system_wifi_status', 'system_set_wifi', 'app_open', 'app_quit', 'app_activate', 'app_list_running', 'app_frontmost', 'system_notify'])
       expect(names).toContain(n);
   });
 
@@ -67,7 +67,7 @@ describe('actions', () => {
   });
 
   it.runIf(process.platform === 'darwin')('get_dark_mode runs', async () => {
-    const a = actions.find((x) => x.name === 'get_dark_mode')!;
+    const a = actions.find((x) => x.name === 'system_get_dark_mode')!;
     const r = await runOsa(a.build({}, { config: {} }));
     expect(r.stdout).toMatch(/^(true|false)$/);
   });

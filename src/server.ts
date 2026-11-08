@@ -1,7 +1,9 @@
 import { McpServer, type RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { actions } from './actions/index.js';
+import { actionGroups, selectActions } from './actions/index.js';
+import type { Action } from './actions/types.js';
+import { searchActions } from './search.js';
 import type { Config } from './config.js';
 import { confirm, nativeDialog, type ConfirmRequest, type Dialog, type Elicit } from './confirm.js';
 import { getAppDictionary, listScriptableApps } from './dictionary.js';
@@ -15,6 +17,11 @@ export type ServerDeps = {
   config: () => Promise<Config>;
   dialog?: Dialog;
   version?: string;
+  /** full: one MCP tool per named action (best with clients that defer/search tools).
+   *  compact: search_actions + run_action instead (small up-front context). */
+  mode?: 'full' | 'compact';
+  /** Limit named actions to these app groups (see actionGroups). */
+  apps?: string[];
 };
 
 const ok = (text: string): CallToolResult => ({ content: [{ type: 'text', text: text === '' ? '(no output)' : text }] });
@@ -46,7 +53,11 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
     {
       instructions: [
         'Control macOS through osascript.',
-        'Prefer the named tools (dark mode, Safari, Spotify, volume, Wi-Fi, apps). For anything else:',
+        `Named actions are prefixed by app: ${Object.keys(actionGroups).filter((g) => !deps.apps || deps.apps.includes(g)).map((g) => `${g}_*`).join(', ')}.`,
+        (deps.mode ?? 'full') === 'compact'
+          ? 'Find them with search_actions and call them with run_action. They run without confirmation.'
+          : 'They run without confirmation. If your tools are deferred, search by app name or task words (e.g. "spotify", "calendar event").',
+        'For anything else:',
         '1) list_scriptable_apps / get_app_dictionary to learn what an app supports,',
         '2) run_applescript (the user must approve each script; pass inputs via `args` and read them with `on run argv`),',
         '3) pass saveAs to keep an approved script as a reusable workflow_<name> tool.',
@@ -75,14 +86,54 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
   };
 
   // ---- named actions ----
-  for (const a of actions) {
+  const selected = selectActions(deps.apps);
+  const runNamed = async (a: Action, input: Record<string, unknown>): Promise<CallToolResult> => {
+    const built = a.build(input, { config: await deps.config() });
+    const r = await exec(built.script, built.lang, built.args, built.timeoutMs);
+    return r.ok ? ok(r.out) : fail(r.out);
+  };
+
+  if ((deps.mode ?? 'full') === 'full') {
+    for (const a of selected) {
+      server.registerTool(
+        a.name,
+        { description: a.description, inputSchema: a.schema, annotations: { destructiveHint: false, openWorldHint: false } },
+        guard(async (input: Record<string, unknown>) => runNamed(a, input)),
+      );
+    }
+  } else {
+    const byName = new Map(selected.map((a) => [a.name, a]));
+    const groups = Object.keys(actionGroups).filter((g) => !deps.apps || deps.apps.includes(g));
     server.registerTool(
-      a.name,
-      { description: a.description, inputSchema: a.schema, annotations: { destructiveHint: false, openWorldHint: false } },
-      guard(async (input: Record<string, unknown>) => {
-        const built = a.build(input, { config: await deps.config() });
-        const r = await exec(built.script, built.lang, built.args, built.timeoutMs);
-        return r.ok ? ok(r.out) : fail(r.out);
+      'search_actions',
+      {
+        description:
+          `Find named macOS actions (no confirmation needed) by keywords, e.g. "pause song", "dark mode", "open url chrome". ` +
+          `Returns matching actions with full JSON input schemas; call them with run_action. ` +
+          `Empty query lists every action name by app. Apps: ${groups.join(', ')}.`,
+        inputSchema: { query: z.string().describe('Keywords describing what to do'), limit: z.number().int().min(1).max(20).optional().describe('Default 5') },
+        annotations: { readOnlyHint: true },
+      },
+      guard(async ({ query, limit }) => {
+        if (!query.trim())
+          return ok(groups.map((g) => `${g}: ${actionGroups[g].map((a) => a.name).join(', ')}`).join('\n'));
+        const hits = searchActions(selected, query, limit ?? 5);
+        if (!hits.length) return ok('No matching action. Try other words, search_actions with an empty query, or get_app_dictionary + run_applescript.');
+        return ok(JSON.stringify(hits.map((a) => ({ name: a.name, description: a.description, inputSchema: z.toJSONSchema(z.object(a.schema)) })), null, 1));
+      }),
+    );
+    server.registerTool(
+      'run_action',
+      {
+        description: 'Run a named macOS action found with search_actions. args must match its inputSchema.',
+        inputSchema: { name: z.string(), args: z.record(z.string(), z.unknown()).optional() },
+      },
+      guard(async ({ name, args }) => {
+        const a = byName.get(name);
+        if (!a) return fail(`Unknown action "${name}". Use search_actions to find one.`);
+        const parsed = z.object(a.schema).safeParse(args ?? {});
+        if (!parsed.success) return fail(`Invalid args for ${name}: ${z.prettifyError(parsed.error)}`);
+        return runNamed(a, parsed.data);
       }),
     );
   }

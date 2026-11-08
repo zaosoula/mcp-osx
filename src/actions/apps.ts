@@ -6,19 +6,19 @@ const appName = z.string().min(1).describe('Application name, e.g. "Safari"');
 
 export const appActions: Action[] = [
   {
-    name: 'open_app',
+    name: 'app_open',
     description: 'Launch (or bring forward) an application by name.',
     schema: { name: appName },
     build: ({ name }) => ({ script: 'on run argv\ntell application (item 1 of argv) to activate\nreturn "opened " & (item 1 of argv)\nend run', args: [name] }),
   },
   {
-    name: 'activate_app',
+    name: 'app_activate',
     description: 'Bring a running application to the front.',
     schema: { name: appName },
     build: ({ name }) => ({ script: 'on run argv\ntell application (item 1 of argv) to activate\nreturn "activated " & (item 1 of argv)\nend run', args: [name] }),
   },
   {
-    name: 'quit_app',
+    name: 'app_quit',
     description: 'Quit an application normally (it may ask to save unsaved work).',
     schema: { name: appName },
     build: ({ name }) => ({
@@ -27,7 +27,7 @@ export const appActions: Action[] = [
     }),
   },
   {
-    name: 'list_running_apps',
+    name: 'app_list_running',
     description: 'List visible running applications.',
     schema: {},
     build: noArgs(as([
@@ -37,7 +37,7 @@ export const appActions: Action[] = [
     ])),
   },
   {
-    name: 'frontmost_app',
+    name: 'app_frontmost',
     description: 'Return the name of the frontmost application.',
     schema: {},
     build: noArgs('tell application "System Events" to return name of first application process whose frontmost is true'),

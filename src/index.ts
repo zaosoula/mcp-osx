@@ -17,7 +17,9 @@ const dir = join(dataDir(), 'workflows');
 mkdirSync(dir, { recursive: true });
 
 const store = new WorkflowStore(dir);
-const { server, sync } = createServer({ runner: runOsa, store, config: loadConfig, version });
+const mode = process.env.MCP_OSX_MODE === 'compact' ? 'compact' : 'full';
+const apps = process.env.MCP_OSX_APPS?.split(',').map((s) => s.trim()).filter(Boolean);
+const { server, sync } = createServer({ runner: runOsa, store, config: loadConfig, version, mode, apps: apps?.length ? apps : undefined });
 await sync();
 store.onChange(() => void sync());
 const shutdown = () => {

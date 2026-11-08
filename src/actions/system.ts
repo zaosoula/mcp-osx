@@ -4,13 +4,13 @@ import { type Action, as, noArgs, bool } from './types.js';
 /** macOS system settings: appearance, audio, Wi-Fi, notifications. */
 export const systemActions: Action[] = [
   {
-    name: 'get_dark_mode',
+    name: 'system_get_dark_mode',
     description: 'Return "true" if macOS dark mode is on, else "false".',
     schema: {},
     build: noArgs('tell application "System Events" to tell appearance preferences to return dark mode'),
   },
   {
-    name: 'set_dark_mode',
+    name: 'system_set_dark_mode',
     description: 'Turn macOS dark mode on or off.',
     schema: { enabled: z.boolean() },
     build: ({ enabled }) => ({
@@ -26,25 +26,25 @@ export const systemActions: Action[] = [
     }),
   },
   {
-    name: 'get_volume',
+    name: 'system_get_volume',
     description: 'Return output volume (0-100) and mute state.',
     schema: {},
     build: noArgs('set s to get volume settings\nreturn "volume " & (output volume of s) & ", muted " & (output muted of s)'),
   },
   {
-    name: 'set_volume',
+    name: 'system_set_volume',
     description: 'Set output volume (0-100).',
     schema: { level: z.number().int().min(0).max(100) },
     build: ({ level }) => ({ script: 'on run argv\nset volume output volume ((item 1 of argv) as integer)\nend run', args: [String(level)] }),
   },
   {
-    name: 'set_muted',
+    name: 'system_set_muted',
     description: 'Mute or unmute audio output.',
     schema: { muted: z.boolean() },
     build: ({ muted }) => ({ script: 'on run argv\nset volume output muted ((item 1 of argv) is "true")\nend run', args: [bool(muted)] }),
   },
   {
-    name: 'wifi_status',
+    name: 'system_wifi_status',
     description: 'Return Wi-Fi power state.',
     schema: {},
     build: noArgs(as([
@@ -54,7 +54,7 @@ export const systemActions: Action[] = [
     ])),
   },
   {
-    name: 'set_wifi',
+    name: 'system_set_wifi',
     description: 'Turn Wi-Fi on or off. Warning: turning it off may cut the agent\'s own network connection.',
     schema: { enabled: z.boolean() },
     build: ({ enabled }) => ({
@@ -70,7 +70,7 @@ export const systemActions: Action[] = [
     }),
   },
   {
-    name: 'notify',
+    name: 'system_notify',
     description: 'Show a macOS notification.',
     schema: { title: z.string(), message: z.string() },
     build: ({ title, message }) => ({
@@ -79,7 +79,7 @@ export const systemActions: Action[] = [
     }),
   },
   {
-    name: 'get_clipboard',
+    name: 'system_get_clipboard',
     description: 'Return the clipboard as plain text (truncated to 10000 chars); non-text clipboards are reported, not returned.',
     schema: {},
     build: noArgs(as([
@@ -95,7 +95,7 @@ export const systemActions: Action[] = [
     ])),
   },
   {
-    name: 'set_clipboard',
+    name: 'system_set_clipboard',
     description: 'Replace the clipboard contents with the given text.',
     schema: { text: z.string().max(100000) },
     build: ({ text }) => ({
@@ -104,7 +104,7 @@ export const systemActions: Action[] = [
     }),
   },
   {
-    name: 'say',
+    name: 'system_say',
     description: 'Speak text aloud with macOS text-to-speech (waits until done); optional voice name.',
     schema: {
       text: z.string().min(1).max(2000),
@@ -125,19 +125,19 @@ export const systemActions: Action[] = [
     }),
   },
   {
-    name: 'start_screensaver',
+    name: 'system_start_screensaver',
     description: 'Start the current screen saver.',
     schema: {},
     build: noArgs(as(['tell application "System Events" to start current screen saver', 'return "screen saver started"'])),
   },
   {
-    name: 'sleep_display',
+    name: 'system_sleep_display',
     description: 'Put the display(s) to sleep now (pmset displaysleepnow); the Mac stays awake.',
     schema: {},
     build: noArgs(as(['do shell script "pmset displaysleepnow"', 'return "display sleeping"'])),
   },
   {
-    name: 'battery_status',
+    name: 'system_battery_status',
     description: 'Return battery charge, power source and charging state (pmset -g batt).',
     schema: {},
     build: noArgs('return do shell script "pmset -g batt"'),

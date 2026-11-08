@@ -15,8 +15,8 @@ let dialog: ReturnType<typeof vi.fn>;
 let client: Client;
 let answer: boolean;
 
-async function connect(opts: { elicit?: (approve: boolean) => void } = {}) {
-  const { server, sync } = createServer({ runner, store, config: async () => ({}), dialog: dialog as never });
+async function connect(opts: { elicit?: (approve: boolean) => void; mode?: 'full' | 'compact'; apps?: string[] } = {}) {
+  const { server, sync } = createServer({ runner, store, config: async () => ({}), dialog: dialog as never, mode: opts.mode, apps: opts.apps });
   await sync();
   const [a, b] = InMemoryTransport.createLinkedPair();
   client = new Client({ name: 't', version: '0' }, { capabilities: opts.elicit ? { elicitation: { form: {} } } : {} });
@@ -44,13 +44,19 @@ describe('server', () => {
   it('lists core tools', async () => {
     await connect();
     const names = (await client.listTools()).tools.map((t) => t.name);
-    for (const n of ['set_dark_mode', 'spotify_play_favorites', 'run_applescript', 'get_app_dictionary', 'list_scriptable_apps', 'list_workflows', 'run_workflow', 'delete_workflow'])
+    for (const n of ['system_set_dark_mode', 'spotify_play_favorites', 'run_applescript', 'get_app_dictionary', 'list_scriptable_apps', 'list_workflows', 'run_workflow', 'delete_workflow'])
       expect(names).toContain(n);
+  });
+
+  it('instructions name the app groups for tool search', async () => {
+    await connect();
+    const ins = client.getInstructions() ?? '';
+    for (const g of ['system', 'spotify', 'calendar', 'chromium']) expect(ins).toContain(g);
   });
 
   it('named action runs without confirmation', async () => {
     await connect();
-    const r = await client.callTool({ name: 'set_volume', arguments: { level: 20 } });
+    const r = await client.callTool({ name: 'system_set_volume', arguments: { level: 20 } });
     expect(r.isError).toBeFalsy();
     expect(dialog).not.toHaveBeenCalled();
     expect(runner.mock.calls[0][0].args).toEqual(['20']);
@@ -181,5 +187,47 @@ describe('server', () => {
     await connect();
     const r = await client.callTool({ name: 'run_workflow', arguments: { name: 'nope' } });
     expect(r.isError).toBe(true);
+  });
+
+  describe('compact mode', () => {
+    it('exposes core tools only', async () => {
+      await connect({ mode: 'compact' });
+      const names = (await client.listTools()).tools.map((t) => t.name);
+      expect(names).toEqual(expect.arrayContaining(['search_actions', 'run_action', 'run_applescript', 'get_app_dictionary']));
+      expect(names).not.toContain('spotify_control');
+      expect(names.length).toBeLessThan(15);
+    });
+    it('search_actions returns full JSON schemas', async () => {
+      await connect({ mode: 'compact' });
+      const r = await client.callTool({ name: 'search_actions', arguments: { query: 'set volume' } });
+      const hits = JSON.parse(text(r));
+      const vol = hits.find((h: any) => h.name === 'system_set_volume');
+      expect(vol.inputSchema.properties.level.maximum).toBe(100);
+      expect(vol.description).toBeTruthy();
+    });
+    it('search_actions with empty query lists names by app', async () => {
+      await connect({ mode: 'compact' });
+      const t = text(await client.callTool({ name: 'search_actions', arguments: { query: '' } }));
+      expect(t).toMatch(/^spotify: .*spotify_control/m);
+    });
+    it('run_action validates and runs', async () => {
+      await connect({ mode: 'compact' });
+      const bad = await client.callTool({ name: 'run_action', arguments: { name: 'system_set_volume', args: { level: 500 } } });
+      expect(bad.isError).toBe(true);
+      expect(runner).not.toHaveBeenCalled();
+      const good = await client.callTool({ name: 'run_action', arguments: { name: 'system_set_volume', args: { level: 30 } } });
+      expect(good.isError).toBeFalsy();
+      expect(runner.mock.calls[0][0].args).toEqual(['30']);
+      const unknown = await client.callTool({ name: 'run_action', arguments: { name: 'nope', args: {} } });
+      expect(text(unknown)).toMatch(/search_actions/);
+    });
+  });
+
+  it('app filter limits named tools', async () => {
+    await connect({ apps: ['spotify'] });
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    expect(names).toContain('spotify_control');
+    expect(names).not.toContain('music_control');
+    expect(names).toContain('run_applescript');
   });
 });

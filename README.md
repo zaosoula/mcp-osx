@@ -39,13 +39,13 @@ Then point your client at `node /path/to/mcp-osx/dist/index.js`.
 
 | Tool | What it does |
 |------|--------------|
-| `get_dark_mode`, `set_dark_mode` | Appearance |
-| `get_volume`, `set_volume`, `set_muted` | Audio output |
-| `wifi_status`, `set_wifi` | Wi-Fi power. Turning it off can cut the agent's own connection. |
-| `notify` | Show a notification |
+| `system_get_dark_mode`, `system_set_dark_mode` | Appearance |
+| `system_get_volume`, `system_set_volume`, `system_set_muted` | Audio output |
+| `system_wifi_status`, `system_set_wifi` | Wi-Fi power. Turning it off can cut the agent's own connection. |
+| `system_notify` | Show a notification |
 | `safari_open_url`, `safari_current_tab` | Safari |
 | `spotify_control`, `spotify_current_track`, `spotify_play`, `spotify_play_favorites` | Spotify |
-| `open_app`, `activate_app`, `quit_app`, `list_running_apps`, `frontmost_app` | Any application |
+| `app_open`, `app_activate`, `app_quit`, `app_list_running`, `app_frontmost` | Any application |
 | `list_scriptable_apps`, `get_app_dictionary` | Discover what apps can be scripted to do (read-only) |
 | `run_applescript` | Run any AppleScript or JXA **after approval**. Can save it as a workflow. |
 | `list_workflows`, `run_workflow`, `delete_workflow`, `workflow_<name>` | Saved workflows |
