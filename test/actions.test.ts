@@ -66,7 +66,8 @@ describe('actions', () => {
     expect(z.object(a.schema).safeParse({ uri: 'file:///etc/passwd' }).success).toBe(false);
   });
 
-  it.runIf(process.platform === 'darwin')('get_dark_mode runs', async () => {
+  // needs Automation permission for System Events, which CI runners can't grant
+  it.runIf(process.platform === 'darwin' && !process.env.CI)('get_dark_mode runs', async () => {
     const a = actions.find((x) => x.name === 'system_get_dark_mode')!;
     const r = await runOsa(a.build({}, { config: {} }));
     expect(r.stdout).toMatch(/^(true|false)$/);

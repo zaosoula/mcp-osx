@@ -79,6 +79,15 @@ describe('server', () => {
     expect(text(r)).toContain('Home');
   });
 
+  it('retries once when the target app was quitting (-600)', async () => {
+    runner.mockResolvedValueOnce({ stdout: '', stderr: "System Events got an error: Application isn't running. (-600)", code: 1 });
+    runner.mockResolvedValueOnce({ stdout: 'true', stderr: '', code: 0 });
+    await connect();
+    const r = await client.callTool({ name: 'system_get_dark_mode', arguments: {} });
+    expect(text(r)).toBe('true');
+    expect(runner).toHaveBeenCalledTimes(2);
+  });
+
   it('named action error carries hint', async () => {
     runner.mockResolvedValueOnce({ stdout: '', stderr: 'Not authorized to send Apple events to Spotify. (-1743)', code: 1 });
     await connect();

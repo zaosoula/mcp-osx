@@ -1,13 +1,39 @@
 {
   "name": "mcp-osx",
   "version": "0.1.0",
-  "description": "MCP server that lets agents control macOS via osascript: named actions, confirmed raw AppleScript/JXA, saved workflows, app dictionary discovery",
+  "mcpName": "io.github.zaosoula/mcp-osx",
+  "description": "MCP server that lets AI agents control macOS: 81 safe named actions across 19 apps, user-approved AppleScript/JXA, reusable workflows, and app dictionary discovery.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "macos",
+    "applescript",
+    "jxa",
+    "osascript",
+    "automation",
+    "claude",
+    "ai-agents"
+  ],
+  "author": "Zao Soula",
+  "license": "MIT",
+  "homepage": "https://github.com/zaosoula/mcp-osx#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zaosoula/mcp-osx.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zaosoula/mcp-osx/issues"
+  },
   "type": "module",
   "bin": {
     "mcp-osx": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "skills",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=20"
@@ -16,11 +42,11 @@
     "darwin"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "build": "rm -rf dist && tsc -p tsconfig.json && chmod +x dist/index.js",
     "test": "vitest run",
-    "prepublishOnly": "npm run build"
+    "docs": "npm run build && node scripts/gen-tools-doc.mjs",
+    "prepublishOnly": "npm run build && npm test"
   },
-  "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/server": "^2.4.0",
     "fast-xml-parser": "^5.12.0",

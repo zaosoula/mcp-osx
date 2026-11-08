@@ -85,7 +85,10 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
   const selected = selectActions(deps.apps);
   const runNamed = async (a: Action, input: Record<string, unknown>): Promise<CallToolResult> => {
     const built = a.build(input, { config: await deps.config() });
-    const r = await exec(built.script, built.lang, built.args, built.timeoutMs);
+    let r = await exec(built.script, built.lang, built.args, built.timeoutMs);
+    // -600: the target app (often System Events, which quits when idle) was shutting down,
+    // so the command was never delivered. Retrying once is safe.
+    if (!r.ok && /\(-600\)/.test(r.out)) r = await exec(built.script, built.lang, built.args, built.timeoutMs);
     if (!r.ok) return fail(r.out);
     if (!a.output) return ok(r.out);
     return { ...ok(r.out), structuredContent: parseRecords(r.out, a.output.columns) };

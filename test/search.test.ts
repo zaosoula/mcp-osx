@@ -50,3 +50,12 @@ describe('searchActions', () => {
     expect(searchActions(actions, 'list', 2).length).toBe(2);
   });
 });
+
+describe('README', () => {
+  it('documents every named action (run `npm run docs` after adding one)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const missing = actions.map((a) => a.name).filter((n) => !readme.includes(`\`${n}\``));
+    expect(missing).toEqual([]);
+  });
+});
