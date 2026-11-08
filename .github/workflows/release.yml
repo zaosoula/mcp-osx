@@ -158,6 +158,22 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: package
+      # npm publish can succeed before publish-time scanning makes the version available.
+      - name: Wait for the npm version to be available
+        timeout-minutes: 21
+        run: |
+          PACKAGE=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          for attempt in {1..40}; do
+            if [[ "$(npm view "$PACKAGE@$VERSION" version 2>/dev/null)" == "$VERSION" ]]; then
+              echo "$PACKAGE@$VERSION is available on npm."
+              exit 0
+            fi
+            echo "Waiting for $PACKAGE@$VERSION on npm ($attempt/40)..."
+            sleep 30
+          done
+          echo "::error::$PACKAGE@$VERSION did not become available on npm within 20 minutes."
+          exit 1
       - name: Publish to the MCP Registry
         run: |
           curl -fsSL https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz | tar xz mcp-publisher
