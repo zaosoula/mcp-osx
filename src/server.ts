@@ -102,7 +102,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
           description: a.description,
           inputSchema: z.object(a.schema),
           ...(a.output ? { outputSchema: outputSchemaFor(a.output.columns) } : {}),
-          annotations: { destructiveHint: false, openWorldHint: false },
+          annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
         },
         guard(async (input: Record<string, unknown>) => runNamed(a, input)),
       );
@@ -118,7 +118,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
           `Returns matching actions with full JSON input schemas; call them with run_action. ` +
           `Empty query lists every action name by app. Apps: ${groups.join(', ')}.`,
         inputSchema: z.object({ query: z.string().describe('Keywords describing what to do'), limit: z.number().int().min(1).max(20).optional().describe('Default 5') }),
-        annotations: { readOnlyHint: true },
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       },
       guard(async ({ query, limit }) => {
         if (!query.trim())
@@ -144,6 +144,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
       {
         description: 'Run a named macOS action found with search_actions. args must match its inputSchema.',
         inputSchema: z.object({ name: z.string(), args: z.record(z.string(), z.unknown()).optional() }),
+        annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
       },
       guard(async ({ name, args }) => {
         const a = byName.get(name);
@@ -174,7 +175,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
         description: z.string().optional().describe('Workflow description (with saveAs)'),
         params: z.array(paramSchema).optional().describe('Workflow parameters (with saveAs)'),
       }),
-      annotations: { destructiveHint: true, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
     guard(async ({ script, language, args = [], timeoutMs, saveAs, description, params = [] }, ctx) => {
       const lang: Lang = language ?? 'applescript';
@@ -204,7 +205,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
   // ---- dictionary discovery ----
   server.registerTool(
     'list_scriptable_apps',
-    { description: 'List installed apps that ship an AppleScript dictionary.', inputSchema: z.object({}), annotations: { readOnlyHint: true } },
+    { description: 'List installed apps that ship an AppleScript dictionary.', inputSchema: z.object({}), annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
     guard(async () => ok((await listScriptableApps()).map((a) => `${a.name}\t${a.path}`).join('\n'))),
   );
   server.registerTool(
@@ -212,7 +213,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
     {
       description: "Summarize an app's AppleScript dictionary (commands, classes, properties, enums). Use filter to narrow to a suite/command/class.",
       inputSchema: z.object({ app: z.string().describe('App name (e.g. "Spotify") or absolute .app path'), filter: z.string().optional() }),
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     guard(async ({ app, filter }) => ok(await getAppDictionary(app, filter))),
   );
@@ -239,7 +240,7 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
 
   server.registerTool(
     'list_workflows',
-    { description: 'List saved workflows.', inputSchema: z.object({}), annotations: { readOnlyHint: true } },
+    { description: 'List saved workflows.', inputSchema: z.object({}), annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
     guard(async () => {
       const ws = await store.list();
       if (!ws.length) return ok('No saved workflows. Save one with run_applescript saveAs.');
@@ -251,12 +252,13 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
     {
       description: 'Run a saved workflow by name (same as calling workflow_<name>).',
       inputSchema: z.object({ name: z.string(), params: z.record(z.string(), z.string()).optional() }),
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
     guard(async ({ name, params }, ctx) => runWorkflow(name, params ?? {}, ctx)),
   );
   server.registerTool(
     'delete_workflow',
-    { description: 'Delete a saved workflow (asks the user to confirm).', inputSchema: z.object({ name: z.string() }), annotations: { destructiveHint: true } },
+    { description: 'Delete a saved workflow (asks the user to confirm).', inputSchema: z.object({ name: z.string() }), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false } },
     guard(async ({ name }, ctx) => {
       const w = await store.get(name);
       if (!w) return fail(`No workflow named "${name}".`);
@@ -279,7 +281,11 @@ export function createServer(deps: ServerDeps): { server: McpServer; sync: () =>
     }
     return server.registerTool(
       `workflow_${w.name}`,
-      { description: `Saved workflow: ${w.description || w.name}`, inputSchema: z.object(shape) },
+      {
+        description: `Saved workflow: ${w.description || w.name}`,
+        inputSchema: z.object(shape),
+        annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      },
       guard(async (input: Record<string, unknown>, ctx) => runWorkflow(w.name, input as Record<string, string>, ctx)),
     );
   };
