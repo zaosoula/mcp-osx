@@ -7,10 +7,12 @@
 An [MCP](https://modelcontextprotocol.io) server that drives macOS through `osascript`. It has 81 ready-made actions across 19 apps, and the agent can write its own AppleScript when those aren't enough. **Nothing arbitrary runs until you approve the exact script.**
 
 [![npm](https://img.shields.io/npm/v/mcp-osx?color=cb3837&logo=npm)](https://www.npmjs.com/package/mcp-osx)
-[![CI](https://github.com/zaosoula/mcp-osx/actions/workflows/ci.yml/badge.svg)](https://github.com/zaosoula/mcp-osx/actions/workflows/ci.yml)
+[![CI](https://github.com/zaosoula/mcp-osx/actions/workflows/release.yml/badge.svg)](https://github.com/zaosoula/mcp-osx/actions/workflows/release.yml)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.zaosoula%2Fmcp--osx-6e56cf)](https://registry.modelcontextprotocol.io)
 ![macOS](https://img.shields.io/badge/macOS-14%2B-000?logo=apple)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+[![macOS (osascript) MCP server](https://mcprush.com/badge/macos-osascript-mcp/card.svg)](https://mcprush.com/to/macos-osascript-mcp?ref=badge)
 
 </div>
 
