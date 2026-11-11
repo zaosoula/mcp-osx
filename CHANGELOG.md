@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.1.1
+
+[compare changes](https://github.com/zaosoula/mcp-osx/compare/v0.1.0...v0.1.1)
+
+### 🩹 Fixes
+
+- Explicit tool annotations (local-only read tools, destructive script tools) ([035ec7c](https://github.com/zaosoula/mcp-osx/commit/035ec7c))
+
+### 📖 Documentation
+
+- Add mcprush badge, fix CI badge workflow ([b4aa804](https://github.com/zaosoula/mcp-osx/commit/b4aa804))
+
+### 🏡 Chore
+
+- Shorten MCP Registry description to meet its limit ([0ac6d15](https://github.com/zaosoula/mcp-osx/commit/0ac6d15))
+
+### 🤖 CI
+
+- Bump GitHub actions off the deprecated Node 20 runtime ([feb5d96](https://github.com/zaosoula/mcp-osx/commit/feb5d96))
+- Wait for npm availability before registry publishing ([16f0504](https://github.com/zaosoula/mcp-osx/commit/16f0504))
+
+### ❤️ Contributors
+
+- Zao Soula ([@zaosoula](https://github.com/zaosoula))
+
 ## 0.1.0 — 2026-11-08
 
 First release.

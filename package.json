@@ -1,6 +1,6 @@
 {
   "name": "mcp-osx",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "mcpName": "io.github.zaosoula/mcp-osx",
   "description": "MCP server that lets AI agents control macOS: 81 safe named actions across 19 apps, user-approved AppleScript/JXA, reusable workflows, and app dictionary discovery.",
   "keywords": [
